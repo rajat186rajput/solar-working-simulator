@@ -1,0 +1,282 @@
+import type { Mode, DayType, BatteryType, SimResult } from "./types";
+import { getSolarW } from "./solar-curve";
+import { clamp } from "./utils";
+
+interface SimInput {
+  mode: Mode;
+  timeHour: number;
+  dayType: DayType;
+  gridAvailable: boolean;
+  batterySoc: number;         // 0.0 to 1.0
+  batteryKwh: number;         // rated kWh
+  batteryType: BatteryType;
+  panelKwp: number;
+  inverterWatts: number;
+  loadW: number;
+  currentNetMeterWh: number;
+  surgeW?: number;            // if surge is active
+}
+
+// Battery constants
+const DOD_FACTOR: Record<BatteryType, number> = {
+  lifepo4: 0.90,
+  "lead-acid": 0.50,
+};
+const INVERTER_EFF = 0.95;
+const LOW_SOC_CUTOFF: Record<BatteryType, number> = {
+  lifepo4: 0.10,
+  "lead-acid": 0.50,
+};
+// C-rate for max charge
+const C_RATE: Record<BatteryType, number> = {
+  lifepo4: 0.5,
+  "lead-acid": 0.2,
+};
+const VOLTAGE: Record<BatteryType, number> = {
+  lifepo4: 51.2,
+  "lead-acid": 48,
+};
+
+function getBatteryUsableKwh(batteryKwh: number, batteryType: BatteryType): number {
+  return batteryKwh * DOD_FACTOR[batteryType] * INVERTER_EFF;
+}
+
+function getMaxChargeW(batteryKwh: number, batteryType: BatteryType): number {
+  // Estimate Ah from kWh / voltage, then apply C-rate
+  const voltage = VOLTAGE[batteryType];
+  const ah = (batteryKwh * 1000) / voltage;
+  return ah * C_RATE[batteryType] * voltage;
+}
+
+// Tick duration for SoC change calculation (1 hour = 3600s)
+const TICK_HOURS = 1;
+
+export function runSimulation(input: SimInput): SimResult {
+  const {
+    mode,
+    timeHour,
+    dayType,
+    gridAvailable,
+    batterySoc,
+    batteryKwh,
+    batteryType,
+    panelKwp,
+    inverterWatts,
+    loadW: rawLoadW,
+    currentNetMeterWh,
+    surgeW,
+  } = input;
+
+  const effectiveLoadW = surgeW ?? rawLoadW;
+  const solarW = getSolarW(timeHour, dayType, panelKwp);
+  const surplus = solarW - effectiveLoadW;
+  const deficit = Math.abs(surplus);
+
+  const batteryUsableKwh = getBatteryUsableKwh(batteryKwh, batteryType);
+  const maxChargeW = getMaxChargeW(batteryKwh, batteryType);
+  const lowCutoff = LOW_SOC_CUTOFF[batteryType];
+
+  // Check inverter overload
+  const inverterOverload = effectiveLoadW > inverterWatts;
+
+  let gridImportW = 0;
+  let gridExportW = 0;
+  let batteryChargeW = 0;
+  let batteryDischargeW = 0;
+  let netMeterWh = currentNetMeterWh;
+  let systemStatus = "";
+  let systemOffline = false;
+  let batteryNewSoc = batterySoc;
+
+  if (inverterOverload && mode !== "on-grid") {
+    // Inverter trip — system overloaded
+    return {
+      solarW,
+      loadW: rawLoadW,
+      gridImportW: 0,
+      gridExportW: 0,
+      batteryChargeW: 0,
+      batteryDischargeW: 0,
+      netMeterWh,
+      systemStatus: `Inverter overload! Load ${Math.round(effectiveLoadW)}W > ${Math.round(inverterWatts)}W rated. Kuch appliances band karo.`,
+      systemOffline: true,
+      surgeActive: !!surgeW,
+      batteryNewSoc: batterySoc,
+      inverterOverload: true,
+    };
+  }
+
+  // ---- ON-GRID ----
+  if (mode === "on-grid") {
+    if (!gridAvailable) {
+      // Anti-islanding: complete shutdown
+      systemOffline = true;
+      systemStatus = "Grid nahin — On-Grid system band ho gaya. Solar bhi band.";
+      return {
+        solarW: 0,
+        loadW: rawLoadW,
+        gridImportW: 0,
+        gridExportW: 0,
+        batteryChargeW: 0,
+        batteryDischargeW: 0,
+        netMeterWh,
+        systemStatus,
+        systemOffline,
+        surgeActive: false,
+        batteryNewSoc: batterySoc,
+        inverterOverload: false,
+      };
+    }
+
+    if (solarW === 0) {
+      gridImportW = rawLoadW;
+      netMeterWh -= rawLoadW * TICK_HOURS;
+      systemStatus = "Raat hai, suraj nahin — UPPCL ki bijli chal rahi hai";
+    } else if (surplus >= 0) {
+      gridExportW = surplus;
+      netMeterWh += surplus * TICK_HOURS;
+      systemStatus = "Battery full! Surplus bijli grid ko di ja rahi hai";
+    } else {
+      gridImportW = deficit;
+      netMeterWh -= deficit * TICK_HOURS;
+      systemStatus = "Solar kam — thodi bijli UPPCL se le rahe hain";
+    }
+  }
+
+  // ---- OFF-GRID ----
+  else if (mode === "off-grid") {
+    if (solarW === 0) {
+      if (batterySoc > lowCutoff) {
+        batteryDischargeW = rawLoadW;
+        const deltaKwh = (rawLoadW * TICK_HOURS) / 1000;
+        batteryNewSoc = clamp(batterySoc - deltaKwh / batteryUsableKwh, 0, 1);
+        systemStatus = "Raat — battery se chal raha hai";
+      } else {
+        systemOffline = true;
+        systemStatus = "Battery khatam — system offline";
+      }
+    } else if (surplus >= 0) {
+      if (batterySoc < 1.0) {
+        const chargeW = Math.min(surplus, maxChargeW);
+        batteryChargeW = chargeW;
+        const deltaKwh = (chargeW * TICK_HOURS) / 1000;
+        batteryNewSoc = clamp(batterySoc + deltaKwh / batteryUsableKwh, 0, 1);
+        if (batteryNewSoc >= 0.99) batteryNewSoc = 1.0;
+        systemStatus = "Dhoop se bijli banti hai, battery charge ho rahi hai";
+      } else {
+        // Battery full — panels clip
+        systemStatus = "Battery full — panels throttle ho rahe hain, urja waste ho rahi hai";
+      }
+    } else {
+      // Deficit — battery discharge
+      if (batterySoc > lowCutoff) {
+        batteryDischargeW = deficit;
+        const deltaKwh = (deficit * TICK_HOURS) / 1000;
+        batteryNewSoc = clamp(batterySoc - deltaKwh / batteryUsableKwh, 0, 1);
+        systemStatus = "Bijli gayi — battery se chal raha hai";
+      } else {
+        systemOffline = true;
+        systemStatus = "Battery khatam — kam zaroori cheezein band ho gayi";
+      }
+    }
+  }
+
+  // ---- HYBRID ----
+  else if (mode === "hybrid") {
+    if (gridAvailable) {
+      if (solarW === 0) {
+        gridImportW = rawLoadW;
+        netMeterWh -= rawLoadW * TICK_HOURS;
+        systemStatus = "Raat hai, suraj nahin — UPPCL ki bijli chal rahi hai";
+      } else if (surplus >= 0) {
+        if (batterySoc < 1.0) {
+          const chargeW = Math.min(surplus, maxChargeW);
+          batteryChargeW = chargeW;
+          const deltaKwh = (chargeW * TICK_HOURS) / 1000;
+          batteryNewSoc = clamp(batterySoc + deltaKwh / batteryUsableKwh, 0, 1);
+          if (batteryNewSoc >= 0.99) batteryNewSoc = 1.0;
+          systemStatus = "Dhoop se bijli banti hai, battery charge ho rahi hai";
+        } else {
+          // Battery full — export to grid
+          gridExportW = surplus;
+          netMeterWh += surplus * TICK_HOURS;
+          systemStatus = "Battery full! Surplus bijli grid ko di ja rahi hai";
+        }
+      } else {
+        // Deficit — grid preferred in hybrid when grid available
+        gridImportW = deficit;
+        netMeterWh -= deficit * TICK_HOURS;
+        systemStatus = "Solar kam — thodi bijli UPPCL se le rahe hain (battery reserve mein hai)";
+      }
+    } else {
+      // Grid fails — hybrid operates like off-grid
+      if (solarW === 0) {
+        if (batterySoc > lowCutoff) {
+          batteryDischargeW = rawLoadW;
+          const deltaKwh = (rawLoadW * TICK_HOURS) / 1000;
+          batteryNewSoc = clamp(batterySoc - deltaKwh / batteryUsableKwh, 0, 1);
+          systemStatus = "Bijli gayi, raat — sirf battery se chal raha hai";
+        } else {
+          systemOffline = true;
+          systemStatus = "Battery khatam — system offline";
+        }
+      } else if (surplus >= 0) {
+        if (batterySoc < 1.0) {
+          const chargeW = Math.min(surplus, maxChargeW);
+          batteryChargeW = chargeW;
+          const deltaKwh = (chargeW * TICK_HOURS) / 1000;
+          batteryNewSoc = clamp(batterySoc + deltaKwh / batteryUsableKwh, 0, 1);
+          if (batteryNewSoc >= 0.99) batteryNewSoc = 1.0;
+          systemStatus = "Bijli gayi, sunny — solar load chal raha hai + battery charge";
+        } else {
+          systemStatus = "Bijli gayi, sunny — solar load chal raha hai, battery 100%";
+        }
+      } else {
+        if (batterySoc > lowCutoff) {
+          batteryDischargeW = deficit;
+          const deltaKwh = (deficit * TICK_HOURS) / 1000;
+          batteryNewSoc = clamp(batterySoc - deltaKwh / batteryUsableKwh, 0, 1);
+          systemStatus = "Bijli gayi — solar + battery se chal raha hai";
+        } else {
+          systemOffline = true;
+          systemStatus = "Bijli gayi + battery khatam — sirf zaroori load chal raha hai";
+        }
+      }
+    }
+  }
+
+  // Battery SoC status override messages
+  if (!systemOffline) {
+    const currentSoc = batteryNewSoc;
+    if ((mode === "off-grid" || mode === "hybrid") && currentSoc <= 0.20 && currentSoc > 0.10) {
+      systemStatus += " | Battery khatam hone wali hai — kuch appliances band karo";
+    }
+  }
+
+  return {
+    solarW,
+    loadW: rawLoadW,
+    gridImportW,
+    gridExportW,
+    batteryChargeW,
+    batteryDischargeW,
+    netMeterWh,
+    systemStatus,
+    systemOffline,
+    surgeActive: !!surgeW,
+    batteryNewSoc,
+    inverterOverload,
+  };
+}
+
+export function calcBackupHours(
+  batterySoc: number,
+  batteryKwh: number,
+  batteryType: BatteryType,
+  loadW: number
+): number {
+  const usable = getBatteryUsableKwh(batteryKwh, batteryType);
+  const available = usable * batterySoc;
+  if (loadW <= 0) return 99;
+  return available / (loadW / 1000);
+}
