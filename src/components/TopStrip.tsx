@@ -13,7 +13,7 @@ const DAY_TYPES: { value: DayType; label: string; icon: string }[] = [
 const TIME_PRESETS: { label: string; icon: string; hour: number }[] = [
   { label: "Dawn",      icon: "🌅", hour: 6  },
   { label: "Morning",   icon: "☀️", hour: 10 },
-  { label: "Afternoon", icon: "🌞", hour: 14 },
+  { label: "Noon",      icon: "🌞", hour: 12 },
   { label: "Evening",   icon: "🌆", hour: 17 },
   { label: "Night",     icon: "🌙", hour: 22 },
 ];
