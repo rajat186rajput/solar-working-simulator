@@ -5,7 +5,7 @@ import { DiagramLayout } from "@/components/DiagramLayout";
 export default function Home() {
   return (
     // Outer wrapper — full viewport, no overflow
-    <div className="h-screen overflow-hidden flex flex-col bg-surface-dark text-text-primary">
+    <div className="h-screen overflow-hidden flex flex-col text-text-primary">
       {/* Mode sidebar — fixed overlay, slides from left */}
       <ModeSidebar />
 

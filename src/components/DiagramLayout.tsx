@@ -34,7 +34,7 @@ export function DiagramLayout() {
     <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* SVG section — shrinks when docked panel is visible */}
       <section
-        className="flex-1 min-h-0 min-w-0 overflow-hidden bg-surface-card/20"
+        className="flex-1 min-h-0 min-w-0 overflow-hidden"
       >
         <SchematicSVG />
       </section>
