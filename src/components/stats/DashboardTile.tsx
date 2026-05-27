@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { motion, useMotionValue, useTransform, animate } from "framer-motion";
+import type { ReactNode } from "react";
 
 interface DashboardTileProps {
   label: string;
@@ -19,6 +20,8 @@ interface DashboardTileProps {
   /** 0–1 fill bar underneath value */
   fillFraction?: number;
   fillColor?: string;
+  /** Optional extra controls/content rendered at the bottom of the tile */
+  extra?: ReactNode;
 }
 
 export function DashboardTile({
@@ -35,6 +38,7 @@ export function DashboardTile({
   subLineColor,
   fillFraction,
   fillColor,
+  extra,
 }: DashboardTileProps) {
   const motionVal = useMotionValue(value);
   const rounded = useTransform(motionVal, Math.round);
@@ -49,15 +53,15 @@ export function DashboardTile({
   const displayColor = textColor || color || "#F1F5F9";
 
   return (
-    <div className="flex flex-col justify-between h-full px-3 py-2.5">
+    <div className="flex flex-col px-2.5 py-2 overflow-hidden">
       {/* Label row */}
-      <div className="flex items-center gap-1 text-[10px] text-text-muted uppercase tracking-wide leading-none">
+      <div className="flex items-center gap-1 text-[10px] text-text-muted uppercase tracking-wide leading-none shrink-0">
         {icon && <span className="text-sm leading-none">{icon}</span>}
         <span>{label}</span>
       </div>
 
       {/* Value */}
-      <div className="flex-1 flex items-center mt-1">
+      <div className="flex items-center min-h-0 mt-1">
         {textValue ? (
           <span className="text-sm font-bold tabular-nums leading-none" style={{ color: displayColor }}>
             {textValue}
@@ -82,7 +86,7 @@ export function DashboardTile({
 
       {/* Fill bar */}
       {fillFraction !== undefined && (
-        <div className="mt-1.5 h-1.5 bg-surface-dark rounded-full overflow-hidden">
+        <div className="shrink-0 h-1.5 bg-surface-dark rounded-full overflow-hidden w-full mt-1">
           <motion.div
             className="h-full rounded-full"
             style={{ backgroundColor: fillColor || displayColor }}
@@ -95,10 +99,17 @@ export function DashboardTile({
       {/* Sub-line */}
       {subLine && (
         <div
-          className="text-[10px] leading-none mt-1 truncate"
+          className="shrink-0 text-[10px] leading-none mt-0.5 truncate"
           style={{ color: subLineColor || "#475569" }}
         >
           {subLine}
+        </div>
+      )}
+
+      {/* Extra controls slot */}
+      {extra && (
+        <div className="mt-1.5 shrink-0">
+          {extra}
         </div>
       )}
     </div>

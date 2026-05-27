@@ -36,11 +36,11 @@ export function ScenarioPills() {
   };
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-1">
       <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">
         Scenarios
       </div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1">
         {SCENARIOS.map((s) => {
           const outcome = s.modeOutcomes[mode];
           const isActive = activeId === s.id;

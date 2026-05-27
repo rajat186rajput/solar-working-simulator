@@ -32,6 +32,7 @@ export function PowerFlowLine({ pathD, powerW, flowType, isActive, gridFail }: P
       d={pathD}
       fill="none"
       stroke={color}
+      initial={{ strokeWidth: 1, opacity: 0.15 }}
       animate={{
         strokeWidth: isActive ? strokeWidth : 1,
         opacity: isActive ? 1 : 0.15,

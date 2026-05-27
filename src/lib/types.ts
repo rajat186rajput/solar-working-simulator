@@ -18,6 +18,13 @@ export interface ApplianceData {
   typicalHoursPerDay: string;
   category: "Cooling" | "Lighting" | "Kitchen" | "Utility" | "Entertainment" | "Vehicle";
   wide?: boolean;          // bento grid 2-col span
+  defaultQty?: number;     // default quantity (1 if omitted)
+}
+
+export interface ApplianceQtyEntry {
+  id: string;
+  qty: number;
+  isOn: boolean;
 }
 
 export interface ScenarioPreset {
@@ -59,9 +66,12 @@ export interface SimState {
   batterySoc: number;
   batteryKwh: number;
   batteryType: BatteryType;
+  batteryOn: boolean;
   panelKwp: number;
+  solarOn: boolean;
   inverterWatts: number;
   appliancesOn: string[];
+  applianceQtys: ApplianceQtyEntry[];
 
   // Computed:
   solarW: number;

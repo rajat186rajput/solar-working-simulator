@@ -1,4 +1,4 @@
-import type { ApplianceData } from "./types";
+import type { ApplianceData, ApplianceQtyEntry } from "./types";
 
 export const APPLIANCES: ApplianceData[] = [
   {
@@ -10,6 +10,7 @@ export const APPLIANCES: ApplianceData[] = [
     typicalHoursPerDay: "6-10 hr",
     category: "Cooling",
     wide: true,
+    defaultQty: 2,
   },
   {
     id: "fan",
@@ -19,6 +20,7 @@ export const APPLIANCES: ApplianceData[] = [
     surgeWatts: 100,
     typicalHoursPerDay: "12 hr",
     category: "Cooling",
+    defaultQty: 4,
   },
   {
     id: "light",
@@ -28,6 +30,7 @@ export const APPLIANCES: ApplianceData[] = [
     surgeWatts: 9,
     typicalHoursPerDay: "8 hr",
     category: "Lighting",
+    defaultQty: 6,
   },
   {
     id: "fridge",
@@ -37,6 +40,7 @@ export const APPLIANCES: ApplianceData[] = [
     surgeWatts: 600,
     typicalHoursPerDay: "24 hr",
     category: "Kitchen",
+    defaultQty: 1,
   },
   {
     id: "tv",
@@ -46,6 +50,7 @@ export const APPLIANCES: ApplianceData[] = [
     surgeWatts: 100,
     typicalHoursPerDay: "4-6 hr",
     category: "Entertainment",
+    defaultQty: 1,
   },
   {
     id: "pump",
@@ -55,6 +60,7 @@ export const APPLIANCES: ApplianceData[] = [
     surgeWatts: 1500,
     typicalHoursPerDay: "1-2 hr",
     category: "Utility",
+    defaultQty: 1,
   },
   {
     id: "geyser",
@@ -64,6 +70,7 @@ export const APPLIANCES: ApplianceData[] = [
     surgeWatts: 2000,
     typicalHoursPerDay: "0.25-0.5 hr",
     category: "Kitchen",
+    defaultQty: 1,
   },
   {
     id: "washing",
@@ -73,6 +80,7 @@ export const APPLIANCES: ApplianceData[] = [
     surgeWatts: 800,
     typicalHoursPerDay: "1 hr",
     category: "Utility",
+    defaultQty: 1,
   },
   {
     id: "microwave",
@@ -82,6 +90,7 @@ export const APPLIANCES: ApplianceData[] = [
     surgeWatts: 800,
     typicalHoursPerDay: "0.25 hr",
     category: "Kitchen",
+    defaultQty: 1,
   },
   {
     id: "iron",
@@ -91,6 +100,7 @@ export const APPLIANCES: ApplianceData[] = [
     surgeWatts: 1000,
     typicalHoursPerDay: "0.5 hr",
     category: "Utility",
+    defaultQty: 1,
   },
   {
     id: "mixer",
@@ -100,6 +110,7 @@ export const APPLIANCES: ApplianceData[] = [
     surgeWatts: 900,
     typicalHoursPerDay: "0.25 hr",
     category: "Kitchen",
+    defaultQty: 1,
   },
   {
     id: "ev",
@@ -110,23 +121,45 @@ export const APPLIANCES: ApplianceData[] = [
     typicalHoursPerDay: "2-4 hr",
     category: "Vehicle",
     wide: true,
+    defaultQty: 1,
   },
 ];
 
 // Default ON appliances for Mandawar summer afternoon
 export const DEFAULT_APPLIANCES_ON = ["ac", "fan", "light", "fridge", "tv"];
 
+// Build default ApplianceQtyEntry array — qty comes from defaultQty, isOn from DEFAULT_APPLIANCES_ON
+export const DEFAULT_APPLIANCE_QTYS: ApplianceQtyEntry[] = APPLIANCES.map((a) => ({
+  id: a.id,
+  qty: a.defaultQty ?? 1,
+  isOn: DEFAULT_APPLIANCES_ON.includes(a.id),
+}));
+
 export function getApplianceById(id: string): ApplianceData | undefined {
   return APPLIANCES.find((a) => a.id === id);
 }
 
+/**
+ * Legacy helper — used when qty map not available (scenario presets etc.)
+ */
 export function calcTotalLoad(appliancesOn: string[]): number {
-  // For AC, multiply by 2 (default 2 ACs in Mandawar config)
   return appliancesOn.reduce((sum, id) => {
     const a = getApplianceById(id);
     if (!a) return sum;
-    if (id === "ac") return sum + a.watts * 2; // 2 x 1.5T AC = 2800W
     return sum + a.watts;
+  }, 0);
+}
+
+/**
+ * New quantity-aware load calculation.
+ * loadW = sum of (qty × watts) for all isOn appliances.
+ */
+export function calcTotalLoadQty(qtys: ApplianceQtyEntry[]): number {
+  return qtys.reduce((sum, entry) => {
+    if (!entry.isOn) return sum;
+    const a = getApplianceById(entry.id);
+    if (!a) return sum;
+    return sum + entry.qty * a.watts;
   }, 0);
 }
 

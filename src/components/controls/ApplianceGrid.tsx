@@ -25,7 +25,7 @@ const ICON_MAP: Record<string, React.ReactNode> = {
 };
 
 export function ApplianceGrid() {
-  const { appliancesOn, toggleAppliance } = useSimStore();
+  const { applianceQtys, toggleAppliance, setApplianceQty } = useSimStore();
 
   return (
     <div className="flex flex-col h-full">
@@ -35,8 +35,11 @@ export function ApplianceGrid() {
       {/* 3-column grid, all 12 appliances */}
       <div className="grid grid-cols-3 gap-1 flex-1 content-start">
         {APPLIANCES.map((appliance) => {
-          const isOn = appliancesOn.includes(appliance.id);
+          const entry = applianceQtys.find((e) => e.id === appliance.id);
+          const isOn = entry?.isOn ?? false;
+          const qty = entry?.qty ?? 1;
           const catColor = CATEGORY_COLORS[appliance.category] || "#94A3B8";
+          const effectiveW = isOn ? qty * appliance.watts : 0;
 
           return (
             <motion.div
@@ -48,44 +51,88 @@ export function ApplianceGrid() {
                 borderColor: isOn ? catColor : "#334155",
               }}
               transition={{ duration: 0.2 }}
-              onClick={() => toggleAppliance(appliance.id)}
-              className="rounded-lg border p-1.5 cursor-pointer select-none flex flex-col gap-1"
+              className="rounded-lg border p-1.5 select-none flex flex-col gap-0.5"
               role="checkbox"
               aria-checked={isOn}
-              aria-label={`Toggle ${appliance.name} (${appliance.watts}W)`}
+              aria-label={`Toggle ${appliance.name} (${appliance.watts}W × ${qty})`}
             >
               {/* Icon + switch row */}
               <div className="flex items-center justify-between">
                 <div
-                  className="p-1 rounded"
+                  className="p-1 rounded cursor-pointer"
                   style={{
                     backgroundColor: isOn ? `${catColor}20` : "rgba(51,65,85,0.4)",
                     color: isOn ? catColor : "#475569",
                   }}
+                  onClick={() => toggleAppliance(appliance.id)}
                 >
                   {ICON_MAP[appliance.id] ?? <Zap size={14} />}
                 </div>
-                <Switch
-                  checked={isOn}
-                  onCheckedChange={() => toggleAppliance(appliance.id)}
-                  aria-label={`Toggle ${appliance.name}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="scale-75 origin-right"
-                />
+                <span className="inline-flex items-center justify-center p-2 -m-2 min-h-[44px]">
+                  <Switch
+                    checked={isOn}
+                    onCheckedChange={() => toggleAppliance(appliance.id)}
+                    aria-label={`Toggle ${appliance.name}`}
+                    className="scale-75 origin-right"
+                  />
+                </span>
               </div>
+
               {/* Name */}
               <div
-                className="text-[10px] font-medium leading-tight truncate"
+                className="text-[10px] font-medium leading-tight truncate cursor-pointer"
                 style={{ color: isOn ? "#F1F5F9" : "#64748B" }}
+                onClick={() => toggleAppliance(appliance.id)}
               >
                 {appliance.hinglishLabel}
               </div>
-              {/* Watts */}
+
+              {/* Watts display */}
               <div
                 className="text-[10px] font-bold tabular-nums leading-none"
                 style={{ color: isOn ? catColor : "#334155" }}
               >
-                {isOn ? `${appliance.watts}W` : "—"}
+                {isOn ? `${effectiveW}W` : "—"}
+              </div>
+
+              {/* Quantity stepper */}
+              <div className="flex items-center gap-0.5 mt-0.5">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setApplianceQty(appliance.id, qty - 1);
+                  }}
+                  disabled={qty <= 0}
+                  className="w-5 h-5 rounded flex items-center justify-center text-[11px] font-bold leading-none transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: isOn ? `${catColor}20` : "rgba(51,65,85,0.4)",
+                    color: isOn ? catColor : "#475569",
+                  }}
+                  aria-label={`Decrease ${appliance.name} quantity`}
+                >
+                  −
+                </button>
+                <span
+                  className="text-[10px] font-bold tabular-nums w-4 text-center"
+                  style={{ color: isOn ? "#F1F5F9" : "#475569" }}
+                >
+                  {qty}
+                </span>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setApplianceQty(appliance.id, qty + 1);
+                  }}
+                  disabled={qty >= 10}
+                  className="w-5 h-5 rounded flex items-center justify-center text-[11px] font-bold leading-none transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: isOn ? `${catColor}20` : "rgba(51,65,85,0.4)",
+                    color: isOn ? catColor : "#475569",
+                  }}
+                  aria-label={`Increase ${appliance.name} quantity`}
+                >
+                  +
+                </button>
               </div>
             </motion.div>
           );

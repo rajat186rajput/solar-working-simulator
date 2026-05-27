@@ -10,7 +10,9 @@ interface SimInput {
   batterySoc: number;         // 0.0 to 1.0
   batteryKwh: number;         // rated kWh
   batteryType: BatteryType;
+  batteryOn: boolean;         // master battery switch
   panelKwp: number;
+  solarOn: boolean;           // master solar switch
   inverterWatts: number;
   loadW: number;
   currentNetMeterWh: number;
@@ -60,7 +62,9 @@ export function runSimulation(input: SimInput): SimResult {
     batterySoc,
     batteryKwh,
     batteryType,
+    batteryOn,
     panelKwp,
+    solarOn,
     inverterWatts,
     loadW: rawLoadW,
     currentNetMeterWh,
@@ -68,13 +72,21 @@ export function runSimulation(input: SimInput): SimResult {
   } = input;
 
   const effectiveLoadW = surgeW ?? rawLoadW;
-  const solarW = getSolarW(timeHour, dayType, panelKwp);
+  // If solar master switch is OFF, generation = 0 regardless of time/day
+  const solarW = solarOn ? getSolarW(timeHour, dayType, panelKwp) : 0;
   const surplus = solarW - effectiveLoadW;
   const deficit = Math.abs(surplus);
 
   const batteryUsableKwh = getBatteryUsableKwh(batteryKwh, batteryType);
   const maxChargeW = getMaxChargeW(batteryKwh, batteryType);
   const lowCutoff = LOW_SOC_CUTOFF[batteryType];
+
+  // When battery master switch OFF or capacity is 0 (None): treat as fully disconnected
+  // (SoC below low-cutoff so no discharge is possible, no charge accepted)
+  const batteryEffectivelyOff = !batteryOn || batteryKwh <= 0;
+  const effectiveBatterySoc = batteryEffectivelyOff ? 0 : batterySoc;
+  // Override batterySoc for all calculations below
+  const activeSoc = effectiveBatterySoc;
 
   // Check inverter overload
   const inverterOverload = effectiveLoadW > inverterWatts;
@@ -86,6 +98,7 @@ export function runSimulation(input: SimInput): SimResult {
   let netMeterWh = currentNetMeterWh;
   let systemStatus = "";
   let systemOffline = false;
+  // batteryNewSoc starts from real batterySoc; activeSoc drives logic
   let batteryNewSoc = batterySoc;
 
   if (inverterOverload && mode !== "on-grid") {
@@ -146,17 +159,22 @@ export function runSimulation(input: SimInput): SimResult {
   // ---- OFF-GRID ----
   else if (mode === "off-grid") {
     if (solarW === 0) {
-      if (batterySoc > lowCutoff) {
+      if (activeSoc > lowCutoff) {
         batteryDischargeW = rawLoadW;
         const deltaKwh = (rawLoadW * TICK_HOURS) / 1000;
         batteryNewSoc = clamp(batterySoc - deltaKwh / batteryUsableKwh, 0, 1);
-        systemStatus = "Raat — battery se chal raha hai";
+        systemStatus = !batteryEffectivelyOff
+          ? "Raat — battery se chal raha hai"
+          : "Battery disconnected — system offline";
+        if (batteryEffectivelyOff) { systemOffline = true; batteryDischargeW = 0; batteryNewSoc = batterySoc; }
       } else {
         systemOffline = true;
-        systemStatus = "Battery khatam — system offline";
+        systemStatus = !batteryEffectivelyOff
+          ? "Battery khatam — system offline"
+          : "Battery disconnected + no solar — system offline";
       }
     } else if (surplus >= 0) {
-      if (batterySoc < 1.0) {
+      if (!batteryEffectivelyOff && activeSoc < 1.0) {
         const chargeW = Math.min(surplus, maxChargeW);
         batteryChargeW = chargeW;
         const deltaKwh = (chargeW * TICK_HOURS) / 1000;
@@ -164,19 +182,23 @@ export function runSimulation(input: SimInput): SimResult {
         if (batteryNewSoc >= 0.99) batteryNewSoc = 1.0;
         systemStatus = "Dhoop se bijli banti hai, battery charge ho rahi hai";
       } else {
-        // Battery full — panels clip
-        systemStatus = "Battery full — panels throttle ho rahe hain, urja waste ho rahi hai";
+        // Battery full or disconnected — panels clip
+        systemStatus = !batteryEffectivelyOff
+          ? "Battery full — panels throttle ho rahe hain, urja waste ho rahi hai"
+          : "Battery disconnected — solar se direct load chal raha hai";
       }
     } else {
       // Deficit — battery discharge
-      if (batterySoc > lowCutoff) {
+      if (activeSoc > lowCutoff) {
         batteryDischargeW = deficit;
         const deltaKwh = (deficit * TICK_HOURS) / 1000;
         batteryNewSoc = clamp(batterySoc - deltaKwh / batteryUsableKwh, 0, 1);
         systemStatus = "Bijli gayi — battery se chal raha hai";
       } else {
         systemOffline = true;
-        systemStatus = "Battery khatam — kam zaroori cheezein band ho gayi";
+        systemStatus = !batteryEffectivelyOff
+          ? "Battery khatam — kam zaroori cheezein band ho gayi"
+          : "Battery disconnected — partial solar only";
       }
     }
   }
@@ -189,7 +211,7 @@ export function runSimulation(input: SimInput): SimResult {
         netMeterWh -= rawLoadW * TICK_HOURS;
         systemStatus = "Raat hai, suraj nahin — UPPCL ki bijli chal rahi hai";
       } else if (surplus >= 0) {
-        if (batterySoc < 1.0) {
+        if (!batteryEffectivelyOff && activeSoc < 1.0) {
           const chargeW = Math.min(surplus, maxChargeW);
           batteryChargeW = chargeW;
           const deltaKwh = (chargeW * TICK_HOURS) / 1000;
@@ -197,31 +219,37 @@ export function runSimulation(input: SimInput): SimResult {
           if (batteryNewSoc >= 0.99) batteryNewSoc = 1.0;
           systemStatus = "Dhoop se bijli banti hai, battery charge ho rahi hai";
         } else {
-          // Battery full — export to grid
+          // Battery full or disconnected — export to grid
           gridExportW = surplus;
           netMeterWh += surplus * TICK_HOURS;
-          systemStatus = "Battery full! Surplus bijli grid ko di ja rahi hai";
+          systemStatus = !batteryEffectivelyOff
+            ? "Battery full! Surplus bijli grid ko di ja rahi hai"
+            : "Battery disconnected — surplus solar grid ko ja rahi hai";
         }
       } else {
         // Deficit — grid preferred in hybrid when grid available
         gridImportW = deficit;
         netMeterWh -= deficit * TICK_HOURS;
-        systemStatus = "Solar kam — thodi bijli UPPCL se le rahe hain (battery reserve mein hai)";
+        systemStatus = !batteryEffectivelyOff
+          ? "Solar kam — thodi bijli UPPCL se le rahe hain (battery reserve mein hai)"
+          : "Solar kam — UPPCL se le rahe hain (battery disconnected)";
       }
     } else {
       // Grid fails — hybrid operates like off-grid
       if (solarW === 0) {
-        if (batterySoc > lowCutoff) {
+        if (activeSoc > lowCutoff) {
           batteryDischargeW = rawLoadW;
           const deltaKwh = (rawLoadW * TICK_HOURS) / 1000;
           batteryNewSoc = clamp(batterySoc - deltaKwh / batteryUsableKwh, 0, 1);
           systemStatus = "Bijli gayi, raat — sirf battery se chal raha hai";
         } else {
           systemOffline = true;
-          systemStatus = "Battery khatam — system offline";
+          systemStatus = !batteryEffectivelyOff
+            ? "Battery khatam — system offline"
+            : "Battery disconnected + grid fail — system offline";
         }
       } else if (surplus >= 0) {
-        if (batterySoc < 1.0) {
+        if (!batteryEffectivelyOff && activeSoc < 1.0) {
           const chargeW = Math.min(surplus, maxChargeW);
           batteryChargeW = chargeW;
           const deltaKwh = (chargeW * TICK_HOURS) / 1000;
@@ -229,17 +257,21 @@ export function runSimulation(input: SimInput): SimResult {
           if (batteryNewSoc >= 0.99) batteryNewSoc = 1.0;
           systemStatus = "Bijli gayi, sunny — solar load chal raha hai + battery charge";
         } else {
-          systemStatus = "Bijli gayi, sunny — solar load chal raha hai, battery 100%";
+          systemStatus = !batteryEffectivelyOff
+            ? "Bijli gayi, sunny — solar load chal raha hai, battery 100%"
+            : "Bijli gayi, sunny — solar se direct chal raha hai (battery disconnected)";
         }
       } else {
-        if (batterySoc > lowCutoff) {
+        if (activeSoc > lowCutoff) {
           batteryDischargeW = deficit;
           const deltaKwh = (deficit * TICK_HOURS) / 1000;
           batteryNewSoc = clamp(batterySoc - deltaKwh / batteryUsableKwh, 0, 1);
           systemStatus = "Bijli gayi — solar + battery se chal raha hai";
         } else {
           systemOffline = true;
-          systemStatus = "Bijli gayi + battery khatam — sirf zaroori load chal raha hai";
+          systemStatus = !batteryEffectivelyOff
+            ? "Bijli gayi + battery khatam — sirf zaroori load chal raha hai"
+            : "Bijli gayi + battery disconnected — system offline";
         }
       }
     }
@@ -248,7 +280,7 @@ export function runSimulation(input: SimInput): SimResult {
   // Battery SoC status override messages
   if (!systemOffline) {
     const currentSoc = batteryNewSoc;
-    if ((mode === "off-grid" || mode === "hybrid") && currentSoc <= 0.20 && currentSoc > 0.10) {
+    if (!batteryEffectivelyOff && (mode === "off-grid" || mode === "hybrid") && currentSoc <= 0.20 && currentSoc > 0.10) {
       systemStatus += " | Battery khatam hone wali hai — kuch appliances band karo";
     }
   }

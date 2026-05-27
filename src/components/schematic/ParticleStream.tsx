@@ -16,32 +16,35 @@ const PARTICLE_COUNT = 6;
 
 interface ParticleStreamProps {
   pathD: string;
-  powerW: number;
+  powerW?: number;
   flowType: FlowType;
   isActive: boolean;
 }
 
-export function ParticleStream({ pathD, powerW, flowType, isActive }: ParticleStreamProps) {
+export function ParticleStream({ pathD, powerW = 0, flowType, isActive }: ParticleStreamProps) {
   if (!isActive) return null;
 
+  const safePowerW = Number.isFinite(powerW) ? powerW : 0;
   const color = FLOW_COLORS[flowType];
-  const durationMs = Math.max(400, 2400 - (powerW / 3000) * 2000);
-  const radius = clamp(2 + powerW / 3000, 2, 4);
+  const durationMs = Math.max(400, 2400 - (safePowerW / 3000) * 2000);
+  const radius = clamp(2 + safePowerW / 3000, 2, 4);
+  const safeRadius = Number.isFinite(radius) ? radius : 2;
 
   return (
     <>
       {Array.from({ length: PARTICLE_COUNT }).map((_, i) => (
         <circle
           key={i}
-          r={radius}
+          r={safeRadius}
           fill={color}
           opacity={isActive ? 0.9 : 0}
           style={{
             offsetPath: `path("${pathD}")`,
             offsetDistance: "0%",
-            animation: isActive
-              ? `flowParticle ${durationMs}ms linear infinite`
-              : "none",
+            animationName: isActive ? "flowParticle" : "none",
+            animationDuration: `${durationMs}ms`,
+            animationTimingFunction: "linear",
+            animationIterationCount: "infinite",
             animationDelay: `${(i / PARTICLE_COUNT) * durationMs}ms`,
           }}
         />

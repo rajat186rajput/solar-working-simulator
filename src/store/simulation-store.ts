@@ -1,11 +1,11 @@
 "use client";
 
 import { create } from "zustand";
-import type { Mode, DayType, BatteryType, SimState } from "@/lib/types";
+import type { Mode, DayType, BatteryType, SimState, ApplianceQtyEntry } from "@/lib/types";
 import { runSimulation } from "@/lib/simulation";
-import { calcTotalLoad } from "@/lib/appliances";
+import { calcTotalLoadQty } from "@/lib/appliances";
 import { getSolarW } from "@/lib/solar-curve";
-import { DEFAULT_APPLIANCES_ON } from "@/lib/appliances";
+import { DEFAULT_APPLIANCES_ON, DEFAULT_APPLIANCE_QTYS } from "@/lib/appliances";
 import type { ScenarioPreset } from "@/lib/types";
 
 interface SimStore extends SimState {
@@ -18,7 +18,10 @@ interface SimStore extends SimState {
   setBatterySoc: (soc: number) => void;
   setBatteryKwh: (kwh: number) => void;
   setBatteryType: (type: BatteryType) => void;
+  toggleBattery: () => void;
   setPanelKwp: (kwp: number) => void;
+  toggleSolar: () => void;
+  setApplianceQty: (id: string, qty: number) => void;
   activateScenario: (scenario: ScenarioPreset) => void;
   resetToDefault: () => void;
   recompute: () => void;
@@ -32,12 +35,14 @@ function computeState(state: Partial<SimState>): Partial<SimState> {
   const batterySoc = state.batterySoc ?? 0.80;
   const batteryKwh = state.batteryKwh ?? 5.12;
   const batteryType = state.batteryType ?? "lifepo4";
+  const batteryOn = state.batteryOn ?? true;
   const panelKwp = state.panelKwp ?? 4.4;
+  const solarOn = state.solarOn ?? true;
   const inverterWatts = state.inverterWatts ?? 6200;
-  const appliancesOn = state.appliancesOn ?? DEFAULT_APPLIANCES_ON;
+  const applianceQtys = state.applianceQtys ?? DEFAULT_APPLIANCE_QTYS;
   const currentNetMeterWh = state.netMeterWh ?? 0;
 
-  const loadW = calcTotalLoad(appliancesOn);
+  const loadW = calcTotalLoadQty(applianceQtys);
 
   const result = runSimulation({
     mode,
@@ -47,11 +52,16 @@ function computeState(state: Partial<SimState>): Partial<SimState> {
     batterySoc,
     batteryKwh,
     batteryType,
+    batteryOn,
     panelKwp,
+    solarOn,
     inverterWatts,
     loadW,
     currentNetMeterWh,
   });
+
+  // Derive legacy appliancesOn for scenario/schematic compat
+  const appliancesOn = applianceQtys.filter((e) => e.isOn).map((e) => e.id);
 
   // Append to status log
   const prevLog = (state.statusLog as string[]) ?? [];
@@ -70,6 +80,7 @@ function computeState(state: Partial<SimState>): Partial<SimState> {
     surgeActive: result.surgeActive,
     inverterOverload: result.inverterOverload,
     batterySoc: result.batteryNewSoc,
+    appliancesOn,
     statusLog: newLog,
   };
 }
@@ -82,12 +93,15 @@ const INITIAL_STATE: SimState = {
   batterySoc: 0.80,
   batteryKwh: 5.12,
   batteryType: "lifepo4",
+  batteryOn: true,
   panelKwp: 4.4,
+  solarOn: true,
   inverterWatts: 6200,
   appliancesOn: [...DEFAULT_APPLIANCES_ON],
+  applianceQtys: DEFAULT_APPLIANCE_QTYS.map((e) => ({ ...e })),
 
   solarW: getSolarW(14, "clear", 4.4),
-  loadW: calcTotalLoad(DEFAULT_APPLIANCES_ON),
+  loadW: calcTotalLoadQty(DEFAULT_APPLIANCE_QTYS),
   gridImportW: 0,
   gridExportW: 0,
   batteryChargeW: 0,
@@ -143,12 +157,22 @@ export const useSimStore = create<SimStore>((set, get) => ({
 
   toggleAppliance(id) {
     set((s) => {
-      const isOn = s.appliancesOn.includes(id);
-      const appliancesOn = isOn
-        ? s.appliancesOn.filter((a) => a !== id)
-        : [...s.appliancesOn, id];
-      const next = { ...s, appliancesOn };
-      return { appliancesOn, ...computeState(next) } as Partial<SimStore>;
+      const qtys = s.applianceQtys.map((e) =>
+        e.id === id ? { ...e, isOn: !e.isOn } : e
+      );
+      const next = { ...s, applianceQtys: qtys };
+      return { applianceQtys: qtys, ...computeState(next) } as Partial<SimStore>;
+    });
+  },
+
+  setApplianceQty(id, qty) {
+    set((s) => {
+      const clamped = Math.max(0, Math.min(10, qty));
+      const qtys = s.applianceQtys.map((e) =>
+        e.id === id ? { ...e, qty: clamped } : e
+      );
+      const next = { ...s, applianceQtys: qtys };
+      return { applianceQtys: qtys, ...computeState(next) } as Partial<SimStore>;
     });
   },
 
@@ -173,6 +197,14 @@ export const useSimStore = create<SimStore>((set, get) => ({
     });
   },
 
+  toggleBattery() {
+    set((s) => {
+      const batteryOn = !s.batteryOn;
+      const next = { ...s, batteryOn };
+      return { batteryOn, ...computeState(next) } as Partial<SimStore>;
+    });
+  },
+
   setPanelKwp(panelKwp) {
     set((s) => {
       const next = { ...s, panelKwp };
@@ -180,16 +212,29 @@ export const useSimStore = create<SimStore>((set, get) => ({
     });
   },
 
+  toggleSolar() {
+    set((s) => {
+      const solarOn = !s.solarOn;
+      const next = { ...s, solarOn };
+      return { solarOn, ...computeState(next) } as Partial<SimStore>;
+    });
+  },
+
   activateScenario(scenario) {
     set((s) => {
+      // Map scenario appliancesOn into qtys (keep existing qtys, just flip isOn)
+      const qtys = s.applianceQtys.map((e) => ({
+        ...e,
+        isOn: scenario.appliancesOn.includes(e.id),
+      }));
       const next = {
         ...s,
-        mode: s.mode, // keep current mode
+        mode: s.mode,
         timeHour: scenario.timeHour,
         dayType: scenario.dayType,
         batterySoc: scenario.batterySoc,
         gridAvailable: scenario.gridAvailable,
-        appliancesOn: [...scenario.appliancesOn],
+        applianceQtys: qtys,
         netMeterWh: 0,
       };
       return {
@@ -197,7 +242,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
         dayType: scenario.dayType,
         batterySoc: scenario.batterySoc,
         gridAvailable: scenario.gridAvailable,
-        appliancesOn: [...scenario.appliancesOn],
+        applianceQtys: qtys,
         netMeterWh: 0,
         ...computeState(next),
       } as Partial<SimStore>;

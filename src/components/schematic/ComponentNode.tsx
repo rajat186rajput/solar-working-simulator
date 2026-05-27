@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sun, Zap, BatteryCharging, Plug, Gauge, House } from "lucide-react";
+import type { ReactNode } from "react";
 
 const ICON_MAP = {
   sun: Sun,
@@ -24,16 +25,23 @@ interface ComponentNodeProps {
   danger?: boolean;
   socPercent?: number;
   tooltip: string;
+  /** Optional controls rendered inside the node via foreignObject */
+  controls?: ReactNode;
+  /** Extra height to add when controls are present (default 0) */
+  controlsHeight?: number;
 }
 
-const NODE_W = 130;
-const NODE_H = 70;
+const NODE_W = 150;
+const NODE_H_BASE = 70;
 
 export function ComponentNode({
   cx, cy, label, subvalue, iconType, glowColor, isActive, danger, socPercent, tooltip,
+  controls, controlsHeight = 0,
 }: ComponentNodeProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const Icon = ICON_MAP[iconType];
+
+  const NODE_H = NODE_H_BASE + (controls ? controlsHeight : 0);
 
   const x = cx - NODE_W / 2;
   const y = cy - NODE_H / 2;
@@ -45,7 +53,7 @@ export function ComponentNode({
     <g
       onMouseEnter={() => setShowTooltip(true)}
       onMouseLeave={() => setShowTooltip(false)}
-      style={{ cursor: "pointer" }}
+      style={{ cursor: "default" }}
     >
       {/* Glow pulse ring */}
       {isActive && (
@@ -53,6 +61,7 @@ export function ComponentNode({
           cx={cx} cy={cy} r={50}
           fill={glowColor}
           fillOpacity={0}
+          initial={{ r: 50, fillOpacity: 0 }}
           animate={{
             fillOpacity: [0, 0.12, 0],
             r: [40, 55, 40],
@@ -110,7 +119,7 @@ export function ComponentNode({
       {/* SoC bar (battery only) */}
       {socPercent !== undefined && (
         <>
-          <rect x={x + 8} y={y + 56} width={114} height={6} rx={3} fill="#1E293B" />
+          <rect x={x + 8} y={y + 56} width={NODE_W - 16} height={6} rx={3} fill="#1E293B" />
           <motion.rect
             x={x + 8} y={y + 56}
             width={0} height={6} rx={3}
@@ -120,10 +129,30 @@ export function ComponentNode({
               : socPercent >= 0.2 ? "#F97316"
               : "#EF4444"
             }
-            animate={{ width: socPercent * 114 }}
+            initial={{ width: 0 }}
+            animate={{ width: Number.isFinite(socPercent) ? socPercent * (NODE_W - 16) : 0 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
           />
         </>
+      )}
+
+      {/* Embedded controls via foreignObject */}
+      {controls && controlsHeight > 0 && (
+        <foreignObject
+          x={x + 6}
+          y={y + NODE_H_BASE + 2}
+          width={NODE_W - 12}
+          height={controlsHeight - 6}
+        >
+          <div
+            className="w-full h-full"
+            style={{ fontFamily: "Inter, sans-serif" }}
+            onMouseEnter={(e) => e.stopPropagation()}
+            onMouseLeave={(e) => e.stopPropagation()}
+          >
+            {controls}
+          </div>
+        </foreignObject>
       )}
 
       {/* Tooltip */}

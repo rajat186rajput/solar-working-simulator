@@ -1,3 +1,6 @@
+// NOTE: ScenarioCard is currently unused — Scenarios section was removed from ControlsPanel in v12
+// per Rajat's instruction. Component retained for future use. Not rendered anywhere.
+// a11y: if re-enabled, replace <motion.div onClick> with <motion.button type="button"> for keyboard accessibility.
 "use client";
 
 import { useState } from "react";

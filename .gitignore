@@ -1,3 +1,15 @@
 node_modules/
 .next/
 .env.local
+
+# Dev/QA helper files (not part of the app)
+.dev-log.txt
+.dev_err.txt
+.dev_log.txt
+qa_reverify_v14.js
+qa_run_tester.js
+write_qa.py
+tsconfig.tsbuildinfo
+
+# Root-level build screenshots (dev artefacts)
+v*.png
