@@ -508,7 +508,13 @@ function GharDrawer({
   );
 }
 
-export function SchematicSVG() {
+export function SchematicSVG({
+  isMobile = false,
+  onMobileGharClick,
+}: {
+  isMobile?: boolean;
+  onMobileGharClick?: () => void;
+} = {}) {
   const {
     mode,
     solarW,
@@ -530,7 +536,14 @@ export function SchematicSVG() {
     lang,
   } = useSimStore();
 
-  const openGharDrawer  = useCallback(() => setGharDrawerOpen(true),  [setGharDrawerOpen]);
+  const openGharDrawer  = useCallback(() => {
+    if (isMobile) {
+      // On mobile, scroll to the appliances panel below instead of opening floating drawer
+      onMobileGharClick?.();
+      return;
+    }
+    setGharDrawerOpen(true);
+  }, [isMobile, onMobileGharClick, setGharDrawerOpen]);
   const closeGharDrawer = useCallback(() => setGharDrawerOpen(false), [setGharDrawerOpen]);
   const togglePin       = useCallback(() => setGharDrawerPinned(!gharDrawerPinned), [gharDrawerPinned, setGharDrawerPinned]);
 
@@ -966,13 +979,16 @@ export function SchematicSVG() {
         {mode.toUpperCase()} MODE
       </div>
 
-      {/* Ghar Appliance Drawer — float mode only (pinned mode renders in page.tsx as docked aside) */}
-      <GharDrawer
-        open={gharDrawerOpen}
-        onClose={closeGharDrawer}
-        isPinned={gharDrawerPinned}
-        onPinToggle={togglePin}
-      />
+      {/* Ghar Appliance Drawer — float mode only (pinned mode renders in DiagramLayout as docked aside)
+          Suppressed on mobile — appliances are always visible below the diagram */}
+      {!isMobile && (
+        <GharDrawer
+          open={gharDrawerOpen}
+          onClose={closeGharDrawer}
+          isPinned={gharDrawerPinned}
+          onPinToggle={togglePin}
+        />
+      )}
     </div>
   );
 }

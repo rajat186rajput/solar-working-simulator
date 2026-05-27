@@ -80,7 +80,7 @@ export function TopBar() {
 
   return (
     <header
-      className="flex items-center shrink-0 px-3 sm:px-4 h-14 gap-2 sm:gap-3 backdrop-blur-md"
+      className="flex items-center shrink-0 px-3 sm:px-4 h-14 gap-2 sm:gap-3 backdrop-blur-md overflow-x-auto"
       style={{
         background: "linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(30,41,59,0.97) 100%)",
         borderBottom: "1px solid transparent",
@@ -110,7 +110,7 @@ export function TopBar() {
       <div className="w-px self-stretch bg-surface-stroke shrink-0 hidden sm:block" />
 
       {/* ── CENTER: Time display + time preset buttons ── */}
-      <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-1 overflow-hidden">
+      <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-1 overflow-x-auto scrollbar-none">
         {/* Clock readout */}
         <span className="text-[10px] font-bold text-text-primary tabular-nums shrink-0 w-[46px]">
           {formatTime(timeHour)}
