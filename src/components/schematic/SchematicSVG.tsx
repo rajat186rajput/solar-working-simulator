@@ -187,16 +187,11 @@ function BatteryNodeControls() {
     batteryChargeW, batteryDischargeW,
     loadW,
     socLocked, setSocLocked,
-    gridCharging, setGridCharging,
-    gridAvailable, mode,
   } = useSimStore();
 
   const handleKwhChange = (kwh: number) => {
     setBatteryKwh(kwh);
   };
-
-  // Grid charging is only relevant when grid is available (hybrid / on-grid modes)
-  const gridChargingApplicable = gridAvailable && (mode === "hybrid" || mode === "on-grid");
 
   const backupHrs = batteryOn && batteryKwh > 0
     ? calcBackupHours(batterySoc, batteryKwh, batteryType, loadW)
@@ -314,19 +309,6 @@ function BatteryNodeControls() {
         ))}
       </select>
 
-      {/* Grid Charging toggle — only shown when grid modes available */}
-      {gridChargingApplicable && (
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <CompactToggle
-            isOn={gridCharging}
-            onToggle={() => setGridCharging(!gridCharging)}
-            onColor="#3B82F6"
-          />
-          <span style={{ fontSize: 10, color: gridCharging ? "#3B82F6" : "#64748B", fontWeight: 600 }}>
-            Grid Charging
-          </span>
-        </div>
-      )}
     </div>
   );
 }
@@ -695,7 +677,7 @@ export function SchematicSVG() {
                 socPercent={batteryOn && useSimStore.getState().batteryKwh > 0 ? batterySoc : 0}
                 tooltip="Charges in the day, powers your home at night or during cuts."
                 controls={<BatteryNodeControls />}
-                controlsHeight={172}
+                controlsHeight={147}
               />
             </motion.g>
           )}

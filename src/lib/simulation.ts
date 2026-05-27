@@ -16,7 +16,6 @@ interface SimInput {
   inverterWatts: number;
   loadW: number;
   currentNetMeterWh: number;
-  gridCharging?: boolean;     // when true + grid available, charge from grid to fill up to max charge rate
   surgeW?: number;            // if surge is active
 }
 
@@ -69,7 +68,6 @@ export function runSimulation(input: SimInput): SimResult {
     inverterWatts,
     loadW: rawLoadW,
     currentNetMeterWh,
-    gridCharging = false,
     surgeW,
   } = input;
 
@@ -209,8 +207,8 @@ export function runSimulation(input: SimInput): SimResult {
   else if (mode === "hybrid") {
     if (gridAvailable) {
       if (solarW === 0) {
-        if (!batteryEffectivelyOff && gridCharging && activeSoc < 1.0) {
-          // Grid charging: fill battery from grid (at max charge rate)
+        if (!batteryEffectivelyOff && activeSoc < 1.0) {
+          // Grid always charges battery when grid is available and battery not full
           const chargeW = maxChargeW;
           batteryChargeW = chargeW;
           const deltaKwh = (chargeW * TICK_HOURS) / 1000;
@@ -227,10 +225,8 @@ export function runSimulation(input: SimInput): SimResult {
       } else if (surplus >= 0) {
         if (!batteryEffectivelyOff && activeSoc < 1.0) {
           const solarSurplusW = surplus;
-          // Grid charging: grid tops up what solar surplus doesn't cover up to maxChargeW
-          const gridChargeTopUpW = (gridCharging && gridAvailable)
-            ? Math.max(0, maxChargeW - solarSurplusW)
-            : 0;
+          // Grid tops up what solar surplus doesn't cover up to maxChargeW
+          const gridChargeTopUpW = Math.max(0, maxChargeW - solarSurplusW);
           const totalChargeW = Math.min(maxChargeW, solarSurplusW + gridChargeTopUpW);
           batteryChargeW = totalChargeW;
           const deltaKwh = (totalChargeW * TICK_HOURS) / 1000;

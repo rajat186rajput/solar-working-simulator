@@ -29,8 +29,6 @@ interface SimStore extends SimState {
   // SoC lock
   socLocked: boolean;
   setSocLocked: (v: boolean) => void;
-  // Grid charging
-  setGridCharging: (v: boolean) => void;
 }
 
 function computeState(state: Partial<SimState> & { socLocked?: boolean }): Partial<SimState> {
@@ -45,7 +43,6 @@ function computeState(state: Partial<SimState> & { socLocked?: boolean }): Parti
   const panelKwp = state.panelKwp ?? 4.4;
   const solarOn = state.solarOn ?? true;
   const inverterWatts = state.inverterWatts ?? 6200;
-  const gridCharging = state.gridCharging ?? false;
   const applianceQtys = state.applianceQtys ?? DEFAULT_APPLIANCE_QTYS;
   const gridOnlyAppliances = state.gridOnlyAppliances ?? new Set<string>();
   const currentNetMeterWh = state.netMeterWh ?? 0;
@@ -67,7 +64,6 @@ function computeState(state: Partial<SimState> & { socLocked?: boolean }): Parti
     inverterWatts,
     loadW,
     currentNetMeterWh,
-    gridCharging,
   });
 
   // Derive legacy appliancesOn for scenario/schematic compat
@@ -108,7 +104,6 @@ const INITIAL_STATE: SimState & { socLocked: boolean } = {
   panelKwp: 4.4,
   solarOn: true,
   inverterWatts: 6200,
-  gridCharging: false,
   appliancesOn: [...DEFAULT_APPLIANCES_ON],
   applianceQtys: DEFAULT_APPLIANCE_QTYS.map((e) => ({ ...e })),
   gridOnlyAppliances: new Set<string>(),
@@ -284,13 +279,6 @@ export const useSimStore = create<SimStore>((set, get) => ({
     set((s) => {
       const next = { ...s, socLocked: v };
       return { socLocked: v, ...computeState(next) } as Partial<SimStore>;
-    });
-  },
-
-  setGridCharging(v: boolean) {
-    set((s) => {
-      const next = { ...s, gridCharging: v };
-      return { gridCharging: v, ...computeState(next) } as Partial<SimStore>;
     });
   },
 }));
