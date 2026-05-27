@@ -25,6 +25,7 @@ export interface ApplianceQtyEntry {
   id: string;
   qty: number;
   isOn: boolean;
+  gridOnly?: boolean;  // if true, this appliance only draws from grid (excluded from solar/battery load)
 }
 
 export interface ScenarioPreset {
@@ -72,6 +73,7 @@ export interface SimState {
   inverterWatts: number;
   appliancesOn: string[];
   applianceQtys: ApplianceQtyEntry[];
+  gridOnlyAppliances: Set<string>;  // appliance IDs that are "Grid Only"
 
   // Computed:
   solarW: number;

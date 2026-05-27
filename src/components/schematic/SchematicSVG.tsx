@@ -418,6 +418,98 @@ export function SchematicSVG() {
           isActive={!systemOffline && loadW > 0}
         />
 
+        {/* ── FLOW WATT LABELS ── */}
+
+        {/* Solar → Inverter label (bezier midpoint ≈ 293,118, offset y-12) */}
+        {effectiveSolarW > 0 && !isOnGridOffline && solarOn && (
+          <text
+            x={293} y={106}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#94A3B8"
+            fontSize="10"
+            fontFamily="Inter, sans-serif"
+            className="pointer-events-none"
+          >
+            {`${Math.round(effectiveSolarW)} W`}
+          </text>
+        )}
+
+        {/* Grid Import label (bezier midpoint ≈ 293,208, offset y-12) */}
+        {showGrid && gridImportW > 0 && gridAvailable && (
+          <text
+            x={293} y={196}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#94A3B8"
+            fontSize="10"
+            fontFamily="Inter, sans-serif"
+            className="pointer-events-none"
+          >
+            {`${Math.round(gridImportW)} W`}
+          </text>
+        )}
+
+        {/* Grid Export label (bezier midpoint ≈ 293,210, offset y+14) */}
+        {showGrid && gridExportW > 0 && gridAvailable && (
+          <text
+            x={293} y={224}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#94A3B8"
+            fontSize="10"
+            fontFamily="Inter, sans-serif"
+            className="pointer-events-none"
+          >
+            {`${Math.round(gridExportW)} W`}
+          </text>
+        )}
+
+        {/* Battery Charge label (horizontal midpoint 550,150, offset y-12) */}
+        {showBattery && batteryChargeW > 0 && batteryOn && (
+          <text
+            x={550} y={138}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#94A3B8"
+            fontSize="10"
+            fontFamily="Inter, sans-serif"
+            className="pointer-events-none"
+          >
+            {`${Math.round(batteryChargeW)} W`}
+          </text>
+        )}
+
+        {/* Battery Discharge label (horizontal midpoint 550,154, offset y+14) */}
+        {showBattery && batteryDischargeW > 0 && batteryOn && (
+          <text
+            x={550} y={168}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#94A3B8"
+            fontSize="10"
+            fontFamily="Inter, sans-serif"
+            className="pointer-events-none"
+          >
+            {`${Math.round(batteryDischargeW)} W`}
+          </text>
+        )}
+
+        {/* Load (Inverter→Ghar) label (bottom bypass mid 660,350, offset y-12) */}
+        {!systemOffline && loadW > 0 && !isOnGridOffline && (
+          <text
+            x={660} y={338}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#94A3B8"
+            fontSize="10"
+            fontFamily="Inter, sans-serif"
+            className="pointer-events-none"
+          >
+            {`${Math.round(loadW)} W`}
+          </text>
+        )}
+
         {/* ── COMPONENT NODES ── */}
 
         {/* COL-1 TOP: Solar Panels — cx=110, cy=85, controlsHeight=60 */}

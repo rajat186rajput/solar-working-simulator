@@ -153,10 +153,23 @@ export function calcTotalLoad(appliancesOn: string[]): number {
 /**
  * New quantity-aware load calculation.
  * loadW = sum of (qty × watts) for all isOn appliances.
+ * If gridOnlyAppliances is provided and gridAvailable is false,
+ * those appliances are excluded from the load (they only run on grid).
  */
-export function calcTotalLoadQty(qtys: ApplianceQtyEntry[]): number {
+export function calcTotalLoadQty(
+  qtys: ApplianceQtyEntry[],
+  gridAvailable?: boolean,
+  gridOnlyAppliances?: Set<string>,
+): number {
   return qtys.reduce((sum, entry) => {
     if (!entry.isOn) return sum;
+    // Skip grid-only appliances when grid is unavailable
+    if (
+      gridOnlyAppliances?.has(entry.id) &&
+      gridAvailable === false
+    ) {
+      return sum;
+    }
     const a = getApplianceById(entry.id);
     if (!a) return sum;
     return sum + entry.qty * a.watts;

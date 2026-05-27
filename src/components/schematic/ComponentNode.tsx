@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Sun, Zap, BatteryCharging, Plug, Gauge, House } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -24,7 +23,7 @@ interface ComponentNodeProps {
   isActive: boolean;
   danger?: boolean;
   socPercent?: number;
-  tooltip: string;
+  tooltip?: string;
   /** Optional controls rendered inside the node via foreignObject */
   controls?: ReactNode;
   /** Extra height to add when controls are present (default 0) */
@@ -35,10 +34,9 @@ const NODE_W = 150;
 const NODE_H_BASE = 70;
 
 export function ComponentNode({
-  cx, cy, label, subvalue, iconType, glowColor, isActive, danger, socPercent, tooltip,
+  cx, cy, label, subvalue, iconType, glowColor, isActive, danger, socPercent,
   controls, controlsHeight = 0,
 }: ComponentNodeProps) {
-  const [showTooltip, setShowTooltip] = useState(false);
   const Icon = ICON_MAP[iconType];
 
   const NODE_H = NODE_H_BASE + (controls ? controlsHeight : 0);
@@ -50,11 +48,7 @@ export function ComponentNode({
   const bgOpacity = isActive ? 1 : 0.5;
 
   return (
-    <g
-      onMouseEnter={() => setShowTooltip(true)}
-      onMouseLeave={() => setShowTooltip(false)}
-      style={{ cursor: "default" }}
-    >
+    <g style={{ cursor: "default" }}>
       {/* Glow pulse ring */}
       {isActive && (
         <motion.circle
@@ -155,39 +149,6 @@ export function ComponentNode({
         </foreignObject>
       )}
 
-      {/* Tooltip */}
-      <AnimatePresence>
-        {showTooltip && (
-          <motion.g
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 5 }}
-            transition={{ duration: 0.2 }}
-          >
-            <rect
-              x={cx > 500 ? cx - 240 : cx + 15}
-              y={cy - 50}
-              width={220}
-              height={85}
-              rx={8}
-              fill="#1E293B"
-              stroke="#334155"
-              strokeWidth={1}
-              style={{ filter: "drop-shadow(0 4px 12px rgba(0,0,0,0.5))" }}
-            />
-            <foreignObject
-              x={cx > 500 ? cx - 235 : cx + 20}
-              y={cy - 45}
-              width={210}
-              height={75}
-            >
-              <div className="text-[11px] text-text-secondary leading-relaxed p-1 font-['Inter']">
-                {tooltip}
-              </div>
-            </foreignObject>
-          </motion.g>
-        )}
-      </AnimatePresence>
     </g>
   );
 }

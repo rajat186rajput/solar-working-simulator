@@ -24,8 +24,13 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   ev:        <Car size={14} />,
 };
 
+// Appliances that should have the "Grid Only" toggle (watts >= 800W)
+const HEAVY_APPLIANCE_IDS = new Set(
+  APPLIANCES.filter((a) => a.watts >= 800).map((a) => a.id)
+);
+
 export function ApplianceGrid() {
-  const { applianceQtys, toggleAppliance, setApplianceQty } = useSimStore();
+  const { applianceQtys, gridOnlyAppliances, toggleAppliance, setApplianceQty, toggleGridOnly } = useSimStore();
 
   return (
     <div className="flex flex-col h-full">
@@ -40,6 +45,8 @@ export function ApplianceGrid() {
           const qty = entry?.qty ?? 1;
           const catColor = CATEGORY_COLORS[appliance.category] || "#94A3B8";
           const effectiveW = isOn ? qty * appliance.watts : 0;
+          const isHeavy = HEAVY_APPLIANCE_IDS.has(appliance.id);
+          const isGridOnly = gridOnlyAppliances.has(appliance.id);
 
           return (
             <motion.div
@@ -85,6 +92,11 @@ export function ApplianceGrid() {
                 onClick={() => toggleAppliance(appliance.id)}
               >
                 {appliance.hinglishLabel}
+              </div>
+
+              {/* Per-item wattage */}
+              <div className="text-[10px] leading-none" style={{ color: "#475569" }}>
+                {appliance.watts}W each
               </div>
 
               {/* Watts display */}
@@ -134,6 +146,26 @@ export function ApplianceGrid() {
                   +
                 </button>
               </div>
+
+              {/* Grid Only toggle — heavy appliances only (watts >= 800W) */}
+              {isHeavy && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleGridOnly(appliance.id);
+                  }}
+                  className="mt-0.5 rounded text-[9px] font-semibold leading-none px-1 py-0.5 transition-colors"
+                  style={{
+                    backgroundColor: isGridOnly ? "rgba(234,179,8,0.15)" : "rgba(51,65,85,0.4)",
+                    color: isGridOnly ? "#EAB308" : "#475569",
+                    border: isGridOnly ? "1px solid rgba(234,179,8,0.4)" : "1px solid transparent",
+                  }}
+                  aria-label={`${isGridOnly ? "Disable" : "Enable"} Grid Only mode for ${appliance.name}`}
+                  title="Grid Only: this appliance is excluded from solar/battery load"
+                >
+                  {isGridOnly ? "⚡ Grid Only" : "⚡ Grid"}
+                </button>
+              )}
             </motion.div>
           );
         })}

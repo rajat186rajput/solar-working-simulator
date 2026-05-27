@@ -22,6 +22,7 @@ interface SimStore extends SimState {
   setPanelKwp: (kwp: number) => void;
   toggleSolar: () => void;
   setApplianceQty: (id: string, qty: number) => void;
+  toggleGridOnly: (id: string) => void;
   activateScenario: (scenario: ScenarioPreset) => void;
   resetToDefault: () => void;
   recompute: () => void;
@@ -40,9 +41,10 @@ function computeState(state: Partial<SimState>): Partial<SimState> {
   const solarOn = state.solarOn ?? true;
   const inverterWatts = state.inverterWatts ?? 6200;
   const applianceQtys = state.applianceQtys ?? DEFAULT_APPLIANCE_QTYS;
+  const gridOnlyAppliances = state.gridOnlyAppliances ?? new Set<string>();
   const currentNetMeterWh = state.netMeterWh ?? 0;
 
-  const loadW = calcTotalLoadQty(applianceQtys);
+  const loadW = calcTotalLoadQty(applianceQtys, gridAvailable, gridOnlyAppliances);
 
   const result = runSimulation({
     mode,
@@ -99,6 +101,7 @@ const INITIAL_STATE: SimState = {
   inverterWatts: 6200,
   appliancesOn: [...DEFAULT_APPLIANCES_ON],
   applianceQtys: DEFAULT_APPLIANCE_QTYS.map((e) => ({ ...e })),
+  gridOnlyAppliances: new Set<string>(),
 
   solarW: getSolarW(14, "clear", 4.4),
   loadW: calcTotalLoadQty(DEFAULT_APPLIANCE_QTYS),
@@ -173,6 +176,19 @@ export const useSimStore = create<SimStore>((set, get) => ({
       );
       const next = { ...s, applianceQtys: qtys };
       return { applianceQtys: qtys, ...computeState(next) } as Partial<SimStore>;
+    });
+  },
+
+  toggleGridOnly(id) {
+    set((s) => {
+      const next = new Set(s.gridOnlyAppliances);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      const nextState = { ...s, gridOnlyAppliances: next };
+      return { gridOnlyAppliances: next, ...computeState(nextState) } as Partial<SimStore>;
     });
   },
 
