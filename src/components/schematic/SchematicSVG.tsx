@@ -6,33 +6,41 @@ import { PowerFlowLine } from "./PowerFlowLine";
 import { ParticleStream } from "./ParticleStream";
 import { ComponentNode } from "./ComponentNode";
 
-// ─── Layout (viewBox 0 0 1060 590) ──────────────────────────────────────────
-// Node dimensions: 150 wide × (70 base + controlsHeight) tall
+// ─── Layout (viewBox 0 0 800 500) ────────────────────────────────────────────
 //
-// Solar Panels:  cx=130, cy=100   → controlsHeight=105 → total h=175
-// Inverter:      cx=530, cy=210   → no controls         → h=70
-// Battery:       cx=130, cy=385   → controlsHeight=145 → total h=215
-// Grid:          cx=930, cy=108   → controlsHeight=72  → total h=142
-// Net Meter:     cx=930, cy=278   → no controls         → h=70
-// House/Load:    cx=930, cy=420   → no controls         → h=70
+// TOP ROW:
+//   Solar Panels  cx=200, cy=95   → controlsHeight=105 → total h=175
+//   UPPCL Grid    cx=600, cy=95   → controlsHeight=72  → total h=142
+//
+// MIDDLE ROW:
+//   Battery       cx=200, cy=310  → controlsHeight=145 → total h=215
+//   Hybrid Inv    cx=600, cy=280  → no controls         → h=70
+//
+// BOTTOM:
+//   Ghar (Load)   cx=400, cy=455  → no controls         → h=70
+//
+// Flow paths connect node midpoints / edges:
+//   Solar right (275,95)  → Inverter left (525,260)
+//   Grid  left  (525,95)  → Inverter left (525,245)   [shared left edge]
+//   Inverter left (525,270) ↔ Battery right (275,300)  [bidirectional battery]
+//   Inverter bottom (600,315) → Ghar top  (400,420)
 
 const PATHS = {
-  solar:         "M 205 130 L 455 198",
-  batteryCharge: "M 530 235 L 205 355",
-  batteryDisch:  "M 205 370 L 530 240",
-  gridImport:    "M 855 120 L 605 205",
-  gridExport:    "M 605 198 L 855 113",
-  load:          "M 605 222 L 855 408",
-  netMeter:      "M 605 215 L 855 272",
+  solar:         "M 275 95  L 525 260",
+  gridImport:    "M 525 95  L 525 245",
+  gridExport:    "M 525 240 L 525 90",
+  batteryCharge: "M 525 275 L 275 305",
+  batteryDisch:  "M 275 315 L 525 285",
+  load:          "M 590 315 L 435 420",
 };
 
 // ─── Solar capacity presets ────────────────────────────────────────────────
 const SOLAR_PRESETS = [
-  { label: "2", kwp: 2 },
+  { label: "2",   kwp: 2   },
   { label: "4.4", kwp: 4.4 },
-  { label: "5", kwp: 5 },
-  { label: "7", kwp: 7 },
-  { label: "10", kwp: 10 },
+  { label: "5",   kwp: 5   },
+  { label: "7",   kwp: 7   },
+  { label: "10",  kwp: 10  },
 ];
 
 function pillStyle(active: boolean, activeColor: string, disabled = false) {
@@ -50,7 +58,7 @@ function pillStyle(active: boolean, activeColor: string, disabled = false) {
   };
 }
 
-// ─── ON/OFF 2-pill toggle (shared style helper) ────────────────────────────
+// ─── ON/OFF 2-pill toggle ──────────────────────────────────────────────────
 function OnOffToggle({
   isOn,
   onToggle,
@@ -127,7 +135,6 @@ function SolarNodeControls() {
         height: "100%",
       }}
     >
-      {/* 2-pill ON/OFF toggle */}
       <OnOffToggle
         isOn={solarOn}
         onToggle={toggleSolar}
@@ -135,7 +142,6 @@ function SolarNodeControls() {
         onLabel="ON"
         offLabel="OFF"
       />
-      {/* Capacity pills */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
         {SOLAR_PRESETS.map((p) => (
           <button
@@ -148,7 +154,6 @@ function SolarNodeControls() {
           </button>
         ))}
       </div>
-      {/* Micro status */}
       <div style={{ fontSize: 9, color: solarOn ? "#F6C90E88" : "#47556977", lineHeight: 1 }}>
         {solarOn ? `${panelKwp} kWp · ~${(panelKwp * 4.5).toFixed(0)} kWh/day` : "Disconnected"}
       </div>
@@ -202,7 +207,6 @@ function BatteryNodeControls() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "2px 2px 0", height: "100%" }}>
-      {/* 2-pill ON/OFF toggle */}
       <OnOffToggle
         isOn={batteryOn}
         onToggle={toggleBattery}
@@ -210,7 +214,6 @@ function BatteryNodeControls() {
         onLabel="ON"
         offLabel="OFF"
       />
-      {/* Capacity pills */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
         {BATTERY_PRESETS.map((p) => {
           const isActive = p.isNone
@@ -227,7 +230,6 @@ function BatteryNodeControls() {
           );
         })}
       </div>
-      {/* LFP / PbA chemistry toggle */}
       <div style={{ display: "flex", gap: 3 }}>
         {(["lifepo4", "lead-acid"] as const).map((chem) => (
           <button
@@ -244,7 +246,6 @@ function BatteryNodeControls() {
           </button>
         ))}
       </div>
-      {/* SoC Override slider (only when battery on + has capacity) */}
       {!isNoneActive && (
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -282,13 +283,12 @@ function BatteryNodeControls() {
   );
 }
 
-// ─── Grid node controls ─────────────────────────────────────────────────────
+// ─── Grid node controls ────────────────────────────────────────────────────
 function GridNodeControls() {
   const { gridAvailable, setGridAvailable, mode } = useSimStore();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "2px 2px 0" }}>
-      {/* 2-pill Bijli ON/OFF toggle */}
       <OnOffToggle
         isOn={gridAvailable}
         onToggle={() => setGridAvailable(!gridAvailable)}
@@ -305,8 +305,6 @@ function GridNodeControls() {
     </div>
   );
 }
-
-const staggerDelay = (index: number) => index * 0.08;
 
 export function SchematicSVG() {
   const {
@@ -326,13 +324,12 @@ export function SchematicSVG() {
   } = useSimStore();
 
   const showBattery = mode === "off-grid" || mode === "hybrid";
-  const showGrid = mode === "on-grid" || mode === "hybrid";
-  const showMPPT = mode === "off-grid";
+  const showGrid    = mode === "on-grid"  || mode === "hybrid";
 
-  const isGridFail = !gridAvailable;
-  const isOnGridOffline = mode === "on-grid" && isGridFail;
+  const isGridFail       = !gridAvailable;
+  const isOnGridOffline  = mode === "on-grid" && isGridFail;
 
-  const batteryActive = showBattery && batterySoc > 0 && batteryOn;
+  const batteryActive   = showBattery && batterySoc > 0 && batteryOn;
   const effectiveSolarW = solarOn ? solarW : 0;
 
   const socColor = batterySoc >= 0.8 ? "#22C55E"
@@ -341,9 +338,10 @@ export function SchematicSVG() {
     : "#EF4444";
 
   return (
-    <div className="w-full h-full relative">
+    // Constrain to ~30% of screen height
+    <div className="w-full" style={{ height: "30vh", minHeight: 220, maxHeight: 480, position: "relative" }}>
       <svg
-        viewBox="0 0 1060 590"
+        viewBox="0 0 800 500"
         className="w-full h-full"
         preserveAspectRatio="xMidYMid meet"
         role="img"
@@ -357,10 +355,16 @@ export function SchematicSVG() {
           <pattern id="grid-bg" width="40" height="40" patternUnits="userSpaceOnUse">
             <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1E293B" strokeWidth="0.5" />
           </pattern>
+          {/* Glow filter for node borders */}
+          <filter id="node-glow-solar" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
         </defs>
-        <rect width="1060" height="590" fill="url(#grid-bg)" opacity="0.5" />
+        <rect width="800" height="500" fill="url(#grid-bg)" opacity="0.5" />
 
-        {/* ---- FLOW LINES ---- */}
+        {/* ── FLOW LINES ── */}
+
         {/* Solar → Inverter */}
         <PowerFlowLine
           pathD={PATHS.solar}
@@ -374,6 +378,44 @@ export function SchematicSVG() {
           flowType="solar"
           isActive={effectiveSolarW > 0 && !isOnGridOffline && solarOn}
         />
+
+        {/* Grid Import: Grid → Inverter */}
+        {showGrid && (
+          <>
+            <PowerFlowLine
+              pathD={PATHS.gridImport}
+              powerW={gridImportW}
+              flowType="grid-import"
+              isActive={gridImportW > 0 && gridAvailable}
+              gridFail={isGridFail}
+            />
+            <ParticleStream
+              pathD={PATHS.gridImport}
+              powerW={gridImportW}
+              flowType="grid-import"
+              isActive={gridImportW > 0 && gridAvailable}
+            />
+          </>
+        )}
+
+        {/* Grid Export: Inverter → Grid */}
+        {showGrid && (
+          <>
+            <PowerFlowLine
+              pathD={PATHS.gridExport}
+              powerW={gridExportW}
+              flowType="grid-export"
+              isActive={gridExportW > 0 && gridAvailable}
+              gridFail={isGridFail}
+            />
+            <ParticleStream
+              pathD={PATHS.gridExport}
+              powerW={gridExportW}
+              flowType="grid-export"
+              isActive={gridExportW > 0 && gridAvailable}
+            />
+          </>
+        )}
 
         {/* Battery Charge: Inverter → Battery */}
         {showBattery && (
@@ -411,45 +453,7 @@ export function SchematicSVG() {
           </>
         )}
 
-        {/* Grid Import */}
-        {showGrid && (
-          <>
-            <PowerFlowLine
-              pathD={PATHS.gridImport}
-              powerW={gridImportW}
-              flowType="grid-import"
-              isActive={gridImportW > 0 && gridAvailable}
-              gridFail={isGridFail}
-            />
-            <ParticleStream
-              pathD={PATHS.gridImport}
-              powerW={gridImportW}
-              flowType="grid-import"
-              isActive={gridImportW > 0 && gridAvailable}
-            />
-          </>
-        )}
-
-        {/* Grid Export */}
-        {showGrid && (
-          <>
-            <PowerFlowLine
-              pathD={PATHS.gridExport}
-              powerW={gridExportW}
-              flowType="grid-export"
-              isActive={gridExportW > 0 && gridAvailable}
-              gridFail={isGridFail}
-            />
-            <ParticleStream
-              pathD={PATHS.gridExport}
-              powerW={gridExportW}
-              flowType="grid-export"
-              isActive={gridExportW > 0 && gridAvailable}
-            />
-          </>
-        )}
-
-        {/* Load: Inverter → House */}
+        {/* Inverter → Ghar/Load */}
         <PowerFlowLine
           pathD={PATHS.load}
           powerW={isOnGridOffline ? 0 : loadW}
@@ -463,16 +467,16 @@ export function SchematicSVG() {
           isActive={!systemOffline && loadW > 0}
         />
 
-        {/* ---- COMPONENT NODES ---- */}
+        {/* ── COMPONENT NODES ── */
 
-        {/* Solar Panels — cx=130, cy=100, controlsHeight=105 → total node h=175 */}
+        /* TOP-LEFT: Solar Panels — cx=200, cy=95, controlsHeight=105 → h=175 */}
         <motion.g
           initial={{ opacity: 0, scale: 0.7, y: -20 }}
           animate={{ opacity: solarOn ? 1 : 0.45, scale: 1, y: 0 }}
           transition={{ delay: 0, duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
         >
           <ComponentNode
-            cx={130} cy={100}
+            cx={200} cy={95}
             label="Solar Panels"
             subvalue={solarOn ? `${Math.round(effectiveSolarW)} W` : "0 W (OFF)"}
             iconType="sun"
@@ -484,43 +488,33 @@ export function SchematicSVG() {
           />
         </motion.g>
 
-        {/* MPPT (Off-Grid only) */}
-        <AnimatePresence>
-          {showMPPT && (
+        {/* TOP-RIGHT: UPPCL Grid — cx=600, cy=95, controlsHeight=72 → h=142 */}
+        <AnimatePresence mode="wait">
+          {showGrid && (
             <motion.g
-              key="mppt"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3 }}
+              key={`grid-${mode}`}
+              initial={{ opacity: 0, scale: 0.6 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.6 }}
+              transition={{ delay: 0.1, duration: 0.3, ease: "easeInOut" }}
             >
-              <rect x={265} y={138} width={80} height={30} rx={8}
-                fill="#1E293B" stroke="#334155" strokeWidth={1} />
-              <text x={305} y={158} textAnchor="middle" fill="#94A3B8"
-                fontSize="10" fontFamily="Inter, sans-serif">MPPT</text>
+              <ComponentNode
+                cx={600} cy={95}
+                label="UPPCL Grid"
+                subvalue={gridAvailable ? "Available" : "Disconnected"}
+                iconType="plug"
+                glowColor={gridAvailable ? "#3B82F6" : "#EF4444"}
+                isActive={gridAvailable}
+                danger={!gridAvailable}
+                tooltip="UPPCL ki line. On-Grid mein bijli kate toh solar bhi band ho jata hai — safety ke liye. Hybrid mein battery use hoti hai."
+                controls={<GridNodeControls />}
+                controlsHeight={72}
+              />
             </motion.g>
           )}
         </AnimatePresence>
 
-        {/* Inverter — cx=530, cy=210, no controls */}
-        <motion.g
-          initial={{ opacity: 0, scale: 0.7 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.2, duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
-        >
-          <ComponentNode
-            cx={530} cy={210}
-            label={mode === "on-grid" ? "On-Grid Inverter" : mode === "off-grid" ? "Off-Grid Inverter" : "Hybrid Inverter"}
-            subvalue={inverterOverload ? "OVERLOAD!" : `${(useSimStore.getState().inverterWatts / 1000).toFixed(1)} kW`}
-            iconType="zap"
-            glowColor={inverterOverload ? "#EF4444" : "#F1F5F9"}
-            isActive={!systemOffline}
-            danger={inverterOverload}
-            tooltip="Inverter DC bijli ko AC mein badalta hai. Ghar mein saari bijli AC hoti hai. Iska size decide karta hai ek waqt mein kitna load chal sakta hai."
-          />
-        </motion.g>
-
-        {/* Battery — cx=130, cy=385, controlsHeight=145 → total node h=215 */}
+        {/* MID-LEFT: Battery — cx=200, cy=310, controlsHeight=145 → h=215 */}
         <AnimatePresence mode="wait">
           {showBattery && (
             <motion.g
@@ -528,10 +522,10 @@ export function SchematicSVG() {
               initial={{ opacity: 0, scale: 0.6 }}
               animate={{ opacity: batteryOn ? 1 : 0.45, scale: 1 }}
               exit={{ opacity: 0, scale: 0.6 }}
-              transition={{ delay: 0.4, duration: 0.3, ease: "easeInOut" }}
+              transition={{ delay: 0.2, duration: 0.3, ease: "easeInOut" }}
             >
               <ComponentNode
-                cx={130} cy={385}
+                cx={200} cy={310}
                 label="Battery"
                 subvalue={batteryOn && useSimStore.getState().batteryKwh > 0
                   ? `${Math.round(batterySoc * 100)}%`
@@ -548,63 +542,32 @@ export function SchematicSVG() {
           )}
         </AnimatePresence>
 
-        {/* Grid connection — cx=930, cy=108, controlsHeight=72 → total h=142 */}
-        <AnimatePresence mode="wait">
-          {showGrid && (
-            <motion.g
-              key={`grid-${mode}`}
-              initial={{ opacity: 0, scale: 0.6 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.6 }}
-              transition={{ delay: 0.4, duration: 0.3, ease: "easeInOut" }}
-            >
-              <ComponentNode
-                cx={930} cy={108}
-                label="UPPCL Grid"
-                subvalue={gridAvailable ? "Available" : "Disconnected"}
-                iconType="plug"
-                glowColor={gridAvailable ? "#3B82F6" : "#EF4444"}
-                isActive={gridAvailable}
-                danger={!gridAvailable}
-                tooltip="UPPCL ki line. On-Grid mein bijli kate toh solar bhi band ho jata hai — safety ke liye. Hybrid mein battery use hoti hai."
-                controls={<GridNodeControls />}
-                controlsHeight={72}
-              />
-            </motion.g>
-          )}
-        </AnimatePresence>
+        {/* MID-RIGHT: Hybrid Inverter — cx=600, cy=280, no controls */}
+        <motion.g
+          initial={{ opacity: 0, scale: 0.7 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.3, duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+        >
+          <ComponentNode
+            cx={600} cy={280}
+            label={mode === "on-grid" ? "On-Grid Inverter" : mode === "off-grid" ? "Off-Grid Inverter" : "Hybrid Inverter"}
+            subvalue={inverterOverload ? "OVERLOAD!" : `${(useSimStore.getState().inverterWatts / 1000).toFixed(1)} kW`}
+            iconType="zap"
+            glowColor={inverterOverload ? "#EF4444" : "#F1F5F9"}
+            isActive={!systemOffline}
+            danger={inverterOverload}
+            tooltip="Inverter DC bijli ko AC mein badalta hai. Ghar mein saari bijli AC hoti hai. Iska size decide karta hai ek waqt mein kitna load chal sakta hai."
+          />
+        </motion.g>
 
-        {/* Net Meter — cx=930, cy=278, no controls */}
-        <AnimatePresence mode="wait">
-          {showGrid && (
-            <motion.g
-              key={`meter-${mode}`}
-              initial={{ opacity: 0, scale: 0.6 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.6 }}
-              transition={{ delay: staggerDelay(3), duration: 0.3 }}
-            >
-              <ComponentNode
-                cx={930} cy={278}
-                label="Net Meter"
-                subvalue={gridAvailable ? "Tracking" : "Offline"}
-                iconType="gauge"
-                glowColor="#A855F7"
-                isActive={gridAvailable}
-                tooltip="Bidirectional meter — solar zyada hone par units grid mein jaate hain aur bill mein minus hote hain. Ye ek tarha ka bank account hai."
-              />
-            </motion.g>
-          )}
-        </AnimatePresence>
-
-        {/* House/Load — cx=930, cy=420, no controls */}
+        {/* BOTTOM-CENTER: Ghar (Load) — cx=400, cy=455, no controls */}
         <motion.g
           initial={{ opacity: 0, scale: 0.7, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ delay: 0.6, duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+          transition={{ delay: 0.4, duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
         >
           <ComponentNode
-            cx={930} cy={420}
+            cx={400} cy={455}
             label="Ghar (Load)"
             subvalue={`${Math.round(loadW)} W`}
             iconType="house"
@@ -617,7 +580,7 @@ export function SchematicSVG() {
         {/* On-Grid grid-fail blackout overlay */}
         {isOnGridOffline && (
           <motion.rect
-            x={0} y={0} width={1060} height={590}
+            x={0} y={0} width={800} height={500}
             fill="#000000"
             pointerEvents="none"
             initial={{ opacity: 0 }}
@@ -628,7 +591,10 @@ export function SchematicSVG() {
       </svg>
 
       {/* Mode label badge */}
-      <div className="absolute top-2 left-2 px-2 py-1 rounded-md bg-surface-card/80 border border-surface-stroke text-xs text-text-secondary font-mono">
+      <div
+        className="absolute top-2 left-2 px-2 py-1 rounded-md bg-surface-card/80 border border-surface-stroke text-xs text-text-secondary font-mono"
+        style={{ pointerEvents: "none" }}
+      >
         {mode.toUpperCase()} MODE
       </div>
     </div>
