@@ -3,6 +3,7 @@ import { TopBar } from "@/components/TopBar";
 import { ApplianceGrid } from "@/components/controls/ApplianceGrid";
 import { ControlsPanel } from "@/components/controls/ControlsPanel";
 import { TopStrip } from "@/components/TopStrip";
+import { ModeSidebar } from "@/components/ModeSidebar";
 
 // SSR-off for heavy animated SVG (Framer Motion + particles)
 const SchematicSVG = dynamic(
@@ -17,6 +18,9 @@ export default function Home() {
   return (
     // Outer wrapper — full viewport, no overflow
     <div className="h-screen overflow-hidden flex flex-col bg-surface-dark text-text-primary">
+      {/* Mode sidebar — fixed overlay, slides from left */}
+      <ModeSidebar />
+
       {/* TOP BAR — 2 rows (~h-14 + h-[50px] = ~h-[110px]) */}
       <TopBar />
 

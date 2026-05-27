@@ -41,6 +41,7 @@ export function PowerFlowLine({ pathD, powerW, flowType, isActive, gridFail }: P
       transition={{ duration: 0.4, ease: "easeOut" }}
       strokeLinecap="round"
       strokeDasharray={isActive ? "none" : "4 8"}
+      markerEnd={isActive ? "url(#arrowhead)" : undefined}
       aria-hidden="true"
       className="power-flow-path"
     />

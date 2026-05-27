@@ -1,7 +1,6 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Slider } from "@/components/ui/slider";
 import { useSimStore } from "@/store/simulation-store";
 import type { DayType } from "@/lib/types";
 import { formatTime } from "@/lib/utils";
@@ -76,18 +75,16 @@ export function TopStrip() {
           {isNight && <span className="text-text-muted font-normal"> nite</span>}
         </span>
 
-        {/* Slider */}
-        <Slider
+        {/* Slider — native range with explicit track styling for dark bg */}
+        <input
+          type="range"
           min={5}
           max={23}
           step={1}
-          value={[timeHour]}
-          onValueChange={(vals) => {
-            const v = Array.isArray(vals) ? vals[0] : vals;
-            setTimeHour(v as number);
-          }}
+          value={timeHour}
+          onChange={(e) => setTimeHour(Number(e.target.value))}
           aria-label="Time of day"
-          className="flex-1 min-w-0"
+          className="flex-1 min-w-0 accent-[#F6C90E] h-1.5 rounded-full appearance-none bg-[#334155] cursor-pointer [&::-webkit-slider-runnable-track]:bg-[#334155] [&::-webkit-slider-runnable-track]:rounded-full [&::-webkit-slider-runnable-track]:h-1.5 [&::-moz-range-track]:bg-[#334155] [&::-moz-range-track]:rounded-full [&::-moz-range-track]:h-[6px]"
         />
 
         {/* Range labels */}

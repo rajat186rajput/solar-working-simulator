@@ -2,11 +2,12 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useSimStore } from "@/store/simulation-store";
+import { calcBackupHours } from "@/lib/simulation";
 import { PowerFlowLine } from "./PowerFlowLine";
 import { ParticleStream } from "./ParticleStream";
 import { ComponentNode } from "./ComponentNode";
 
-// ─── Layout (viewBox 0 0 1000 320) — pure LEFT-TO-RIGHT pipeline ──────────────
+// ─── Layout (viewBox 0 0 1000 370) — pure LEFT-TO-RIGHT pipeline ──────────────
 //
 // COLUMN 1 (LEFT)    COLUMN 2 (CENTER)    COLUMN 3           COLUMN 4 (RIGHT)
 //                                          (CENTER-RIGHT)
@@ -15,116 +16,110 @@ import { ComponentNode } from "./ComponentNode";
 // [UPPCL Grid]    →
 //
 // Node geometry (NODE_W=150, NODE_H_BASE=70):
-//   Solar:    cx=110, cy=95,  controlsH=105 → total_h=175 → y: 8..183   | right edge x=185
-//   Grid:     cx=110, cy=210, controlsH=72  → total_h=142 → y: 139..281 | right edge x=185
-//   Inverter: cx=430, cy=150, no controls   → total_h=70  → y: 115..185 | left x=355, right x=505
-//   Battery:  cx=670, cy=150, controlsH=145 → total_h=215 → y: 43..258  | left x=595, right x=745
-//   Ghar:     cx=890, cy=150, no controls   → total_h=70  → y: 115..185 | left x=815
+//   Solar:    cx=110, cy=85,  controlsH=60  → total_h=130 → y: 20..150   | right edge x=185
+//   Grid:     cx=110, cy=265, controlsH=50  → total_h=120 → y: 205..325  | right edge x=185
+//   Inverter: cx=430, cy=150, no controls   → total_h=70  → y: 115..185  | left x=355, right x=505
+//   Battery:  cx=670, cy=150, controlsH=90  → total_h=160 → y: 70..230   | left x=595, right x=745
+//   Ghar:     cx=890, cy=150, no controls   → total_h=70  → y: 115..185  | left x=815
 //
 // Flow paths (node-edge to node-edge):
-//   Solar    → Inverter : M 185 95  C 300 95  300 150 355 150   (curve top-left → center)
-//   Grid     → Inverter : M 185 210 C 300 210 300 150 355 150   (curve bot-left → center)
+//   Solar    → Inverter : M 185 85  C 300 85  300 150 355 150   (curve top-left → center)
+//   Grid     → Inverter : M 185 265 C 300 265 300 150 355 150   (curve bot-left → center)
 //   Inverter → Battery  : M 505 150 L 595 150                   (horizontal right)
 //   Battery  → Inverter : M 595 154 L 505 154                   (horizontal left — slightly offset)
-//   Inverter → Ghar     : M 430 185 L 430 305 L 890 305 L 890 185  (bottom bypass — routed below all nodes)
+//   Inverter → Ghar     : M 430 185 L 430 350 L 890 350 L 890 185  (bottom bypass — below Grid bottom)
 
 const PATHS = {
-  solar:         "M 185 95  C 300 95  300 150 355 150",
-  gridImport:    "M 185 210 C 300 210 300 150 355 150",
-  gridExport:    "M 360 154 C 300 154 300 210 185 210",
+  solar:         "M 185 85  C 300 85  300 150 355 150",
+  gridImport:    "M 185 265 C 300 265 300 150 355 150",
+  gridExport:    "M 360 154 C 300 154 300 265 185 265",
   batteryCharge: "M 505 150 L 595 150",
   batteryDisch:  "M 595 154 L 505 154",
-  load:          "M 430 185 L 430 305 L 890 305 L 890 185",
+  load:          "M 430 185 L 430 350 L 890 350 L 890 185",
 };
 
 // ─── Solar capacity presets ────────────────────────────────────────────────
-const SOLAR_PRESETS = [
-  { label: "2",   kwp: 2   },
-  { label: "4.4", kwp: 4.4 },
-  { label: "5",   kwp: 5   },
-  { label: "7",   kwp: 7   },
-  { label: "10",  kwp: 10  },
+const SOLAR_KWP_OPTIONS = [
+  { label: "2 kWp",   kwp: 2   },
+  { label: "4.4 kWp", kwp: 4.4 },
+  { label: "5 kWp",   kwp: 5   },
+  { label: "7 kWp",   kwp: 7   },
+  { label: "10 kWp",  kwp: 10  },
 ];
 
-function pillStyle(active: boolean, activeColor: string, disabled = false) {
-  return {
-    padding: "1px 5px",
-    borderRadius: 3,
-    fontSize: 9,
-    fontWeight: 600 as const,
-    border: `1px solid ${active ? activeColor : "#334155"}`,
-    background: active ? `${activeColor}22` : "transparent",
-    color: active ? activeColor : "#64748B",
-    cursor: disabled ? "not-allowed" as const : "pointer" as const,
-    opacity: disabled ? 0.4 : 1,
-    lineHeight: "1.4",
-  };
-}
+// ─── Battery capacity presets ──────────────────────────────────────────────
+const BATTERY_KWH_OPTIONS = [
+  { label: "None",    kwh: 0  },
+  { label: "5 kWh",  kwh: 5  },
+  { label: "10 kWh", kwh: 10 },
+  { label: "15 kWh", kwh: 15 },
+  { label: "20 kWh", kwh: 20 },
+];
 
-// ─── ON/OFF 2-pill toggle ──────────────────────────────────────────────────
-function OnOffToggle({
+const BATTERY_TYPE_OPTIONS = [
+  { label: "LFP (LiFePO4)", value: "lifepo4"   as const },
+  { label: "PbA (Lead-Acid)", value: "lead-acid" as const },
+];
+
+// ─── Compact inline select style ──────────────────────────────────────────
+const SELECT_STYLE: React.CSSProperties = {
+  width: "100%",
+  fontSize: 10,
+  background: "#1E293B",
+  border: "1px solid #334155",
+  borderRadius: 4,
+  padding: "2px 4px",
+  color: "#F1F5F9",
+  cursor: "pointer",
+  outline: "none",
+  lineHeight: "1.4",
+};
+
+// ─── Small compact toggle switch (iOS-style) ─────────────────────────────
+function CompactToggle({
   isOn,
   onToggle,
-  onColor,
-  onLabel = "ON",
-  offLabel = "OFF",
-  offColor = "#64748B",
-  offActiveColor,
+  onColor = "#F6C90E",
 }: {
   isOn: boolean;
   onToggle: () => void;
-  onColor: string;
-  onLabel?: string;
-  offLabel?: string;
-  offColor?: string;
-  offActiveColor?: string;
+  onColor?: string;
 }) {
-  const resolvedOffColor = offActiveColor ?? offColor;
   return (
-    <div style={{ display: "flex", gap: 4, width: "100%" }}>
-      <button
-        onClick={() => !isOn && onToggle()}
+    <button
+      onClick={onToggle}
+      aria-pressed={isOn}
+      style={{
+        position: "relative",
+        width: 28,
+        height: 16,
+        borderRadius: 8,
+        background: isOn ? onColor : "#334155",
+        border: "none",
+        cursor: "pointer",
+        padding: 0,
+        flexShrink: 0,
+        transition: "background 0.18s ease",
+      }}
+    >
+      <span
         style={{
-          flex: 1,
-          padding: "5px 0",
-          borderRadius: 5,
-          fontSize: 11,
-          fontWeight: 700,
-          border: `1.5px solid ${isOn ? onColor : "#334155"}`,
-          background: isOn ? `${onColor}28` : "transparent",
-          color: isOn ? onColor : "#475569",
-          cursor: isOn ? "default" : "pointer",
-          letterSpacing: "0.04em",
-          transition: "all 0.15s ease",
+          position: "absolute",
+          top: 2,
+          left: isOn ? 12 : 2,
+          width: 12,
+          height: 12,
+          borderRadius: "50%",
+          background: "#fff",
+          transition: "left 0.18s ease",
+          display: "block",
         }}
-        aria-pressed={isOn}
-      >
-        {onLabel}
-      </button>
-      <button
-        onClick={() => isOn && onToggle()}
-        style={{
-          flex: 1,
-          padding: "5px 0",
-          borderRadius: 5,
-          fontSize: 11,
-          fontWeight: 700,
-          border: `1.5px solid ${!isOn ? resolvedOffColor : "#334155"}`,
-          background: !isOn ? `${resolvedOffColor}28` : "transparent",
-          color: !isOn ? resolvedOffColor : "#475569",
-          cursor: !isOn ? "default" : "pointer",
-          letterSpacing: "0.04em",
-          transition: "all 0.15s ease",
-        }}
-        aria-pressed={!isOn}
-      >
-        {offLabel}
-      </button>
-    </div>
+      />
+    </button>
   );
 }
 
-// ─── Solar node controls ───────────────────────────────────────────────────
+// ─── Solar node controls (FIX 3 + FIX 5 + FIX 8) ─────────────────────────
 function SolarNodeControls() {
   const { solarOn, toggleSolar, panelKwp, setPanelKwp } = useSimStore();
 
@@ -133,75 +128,63 @@ function SolarNodeControls() {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: 4,
-        padding: "2px 2px 0",
+        gap: 6,
+        padding: "4px 2px 0",
         height: "100%",
       }}
     >
-      <OnOffToggle
-        isOn={solarOn}
-        onToggle={toggleSolar}
-        onColor="#F6C90E"
-        onLabel="ON"
-        offLabel="OFF"
-      />
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
-        {SOLAR_PRESETS.map((p) => (
-          <button
-            key={p.kwp}
-            onClick={() => setPanelKwp(p.kwp)}
-            disabled={!solarOn}
-            style={pillStyle(panelKwp === p.kwp && solarOn, "#F6C90E", !solarOn)}
-          >
-            {p.label} kWp
-          </button>
-        ))}
+      {/* Toggle row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <CompactToggle isOn={solarOn} onToggle={toggleSolar} onColor="#F6C90E" />
+        <span style={{ fontSize: 10, color: solarOn ? "#F6C90E" : "#64748B", fontWeight: 600 }}>
+          {solarOn ? "ON" : "OFF"}
+        </span>
       </div>
+
+      {/* Capacity dropdown */}
+      <select
+        value={panelKwp}
+        onChange={(e) => setPanelKwp(Number(e.target.value))}
+        disabled={!solarOn}
+        style={{ ...SELECT_STYLE, opacity: solarOn ? 1 : 0.45 }}
+        aria-label="Solar panel capacity"
+      >
+        {SOLAR_KWP_OPTIONS.map((o) => (
+          <option key={o.kwp} value={o.kwp}>{o.label}</option>
+        ))}
+      </select>
+
+      {/* Info line */}
       <div style={{ fontSize: 9, color: solarOn ? "#F6C90E88" : "#47556977", lineHeight: 1 }}>
-        {solarOn ? `${panelKwp} kWp · ~${(panelKwp * 4.5).toFixed(0)} kWh/day` : "Disconnected"}
+        {solarOn ? `~${(panelKwp * 4.5).toFixed(0)} kWh/day` : "Disconnected"}
       </div>
     </div>
   );
 }
 
-// ─── Battery capacity presets ──────────────────────────────────────────────
-interface BatteryPreset {
-  label: string;
-  kwh: number;
-  chemistry: "lifepo4" | "lead-acid";
-  isNone?: boolean;
-}
-
-const BATTERY_PRESETS: BatteryPreset[] = [
-  { label: "None",    kwh: 0,   chemistry: "lifepo4",   isNone: true },
-  { label: "5",       kwh: 5,   chemistry: "lifepo4"   },
-  { label: "10",      kwh: 10,  chemistry: "lifepo4"   },
-  { label: "15",      kwh: 15,  chemistry: "lifepo4"   },
-  { label: "20",      kwh: 20,  chemistry: "lifepo4"   },
-  { label: "7.2 PbA", kwh: 7.2, chemistry: "lead-acid" },
-];
-
-// ─── Battery node controls ─────────────────────────────────────────────────
+// ─── Battery node controls (FIX 4 + FIX 5 + FIX 10) ─────────────────────
 function BatteryNodeControls() {
   const {
     batteryKwh, setBatteryKwh,
     batteryType, setBatteryType,
     batteryOn, toggleBattery,
-    batterySoc, setBatterySoc,
+    batterySoc, loadW,
   } = useSimStore();
 
-  const isNoneActive = batteryKwh <= 0 || !batteryOn;
-
-  const handlePreset = (p: BatteryPreset) => {
-    setBatteryKwh(p.kwh);
-    setBatteryType(p.chemistry);
-    if (p.isNone && batteryOn) toggleBattery();
-    if (!p.isNone && !batteryOn) toggleBattery();
+  const handleKwhChange = (kwh: number) => {
+    setBatteryKwh(kwh);
+    // If selecting None, turn off battery
+    if (kwh <= 0 && batteryOn) toggleBattery();
+    // If selecting a real capacity and battery was off (due to None), turn on
+    if (kwh > 0 && !batteryOn) toggleBattery();
   };
 
-  const activePreset = isNoneActive
-    ? BATTERY_PRESETS.find((p) => p.isNone)
-    : BATTERY_PRESETS.find((p) => !p.isNone && p.kwh === batteryKwh && p.chemistry === batteryType);
+  const backupHrs = batteryOn && batteryKwh > 0
+    ? calcBackupHours(batterySoc, batteryKwh, batteryType, loadW)
+    : 0;
+  const backupDisplay = batteryOn && batteryKwh > 0
+    ? backupHrs > 24 ? "24+ hr" : `${backupHrs.toFixed(1)} hr`
+    : "—";
 
   const socColor = batterySoc >= 0.8 ? "#22C55E"
     : batterySoc >= 0.4 ? "#EAB308"
@@ -209,97 +192,63 @@ function BatteryNodeControls() {
     : "#EF4444";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "2px 2px 0", height: "100%" }}>
-      <OnOffToggle
-        isOn={batteryOn}
-        onToggle={toggleBattery}
-        onColor="#10B981"
-        onLabel="ON"
-        offLabel="OFF"
-      />
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 2 }}>
-        {BATTERY_PRESETS.map((p) => {
-          const isActive = p.isNone
-            ? isNoneActive
-            : (!isNoneActive && activePreset?.kwh === p.kwh && activePreset?.chemistry === p.chemistry);
-          return (
-            <button
-              key={`${p.kwh}-${p.chemistry}`}
-              onClick={() => handlePreset(p)}
-              style={pillStyle(isActive, p.isNone ? "#64748B" : "#10B981")}
-            >
-              {p.label}{!p.isNone && p.chemistry === "lifepo4" ? " kWh" : ""}
-            </button>
-          );
-        })}
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "4px 2px 0", height: "100%" }}>
+      {/* Toggle row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <CompactToggle isOn={batteryOn} onToggle={toggleBattery} onColor="#10B981" />
+        <span style={{ fontSize: 10, color: batteryOn ? "#10B981" : "#64748B", fontWeight: 600 }}>
+          {batteryOn ? "ON" : "OFF"}
+        </span>
+        {/* Backup time */}
+        <span style={{ marginLeft: "auto", fontSize: 9, color: "#64748B", fontVariantNumeric: "tabular-nums" }}>
+          Backup: <span style={{ color: socColor, fontWeight: 700 }}>{backupDisplay}</span>
+        </span>
       </div>
-      <div style={{ display: "flex", gap: 3 }}>
-        {(["lifepo4", "lead-acid"] as const).map((chem) => (
-          <button
-            key={chem}
-            onClick={() => !isNoneActive && setBatteryType(chem)}
-            disabled={isNoneActive}
-            style={{
-              ...pillStyle(batteryType === chem && !isNoneActive, "#10B981", isNoneActive),
-              flex: 1,
-              textAlign: "center" as const,
-            }}
-          >
-            {chem === "lifepo4" ? "LFP" : "PbA"}
-          </button>
+
+      {/* Capacity dropdown */}
+      <select
+        value={batteryKwh}
+        onChange={(e) => handleKwhChange(Number(e.target.value))}
+        style={SELECT_STYLE}
+        aria-label="Battery capacity"
+      >
+        {BATTERY_KWH_OPTIONS.map((o) => (
+          <option key={o.kwh} value={o.kwh}>{o.label}</option>
         ))}
-      </div>
-      {!isNoneActive && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 9, color: "#64748B", textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 600 }}>
-              SoC Override
-            </span>
-            <span style={{ fontSize: 10, fontWeight: 700, color: socColor, fontVariantNumeric: "tabular-nums" }}>
-              {Math.round(batterySoc * 100)}%
-            </span>
-          </div>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={5}
-            value={Math.round(batterySoc * 100)}
-            onChange={(e) => setBatterySoc(parseInt(e.target.value) / 100)}
-            style={{
-              width: "100%",
-              height: 6,
-              accentColor: socColor,
-              cursor: "pointer",
-              margin: 0,
-            }}
-            aria-label="Battery state of charge override"
-          />
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 8, color: "#475569" }}>
-            <span>0%</span>
-            <span>50%</span>
-            <span>100%</span>
-          </div>
-        </div>
-      )}
+      </select>
+
+      {/* Type dropdown */}
+      <select
+        value={batteryType}
+        onChange={(e) => setBatteryType(e.target.value as "lifepo4" | "lead-acid")}
+        disabled={batteryKwh <= 0 || !batteryOn}
+        style={{ ...SELECT_STYLE, opacity: batteryKwh > 0 && batteryOn ? 1 : 0.45 }}
+        aria-label="Battery chemistry"
+      >
+        {BATTERY_TYPE_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
     </div>
   );
 }
 
-// ─── Grid node controls ────────────────────────────────────────────────────
+// ─── Grid node controls (FIX 5 + FIX 9) ──────────────────────────────────
 function GridNodeControls() {
   const { gridAvailable, setGridAvailable, mode } = useSimStore();
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "2px 2px 0" }}>
-      <OnOffToggle
-        isOn={gridAvailable}
-        onToggle={() => setGridAvailable(!gridAvailable)}
-        onColor="#3B82F6"
-        onLabel="Bijli ON"
-        offLabel="Bijli OFF"
-        offActiveColor="#EF4444"
-      />
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "4px 2px 0" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <CompactToggle
+          isOn={gridAvailable}
+          onToggle={() => setGridAvailable(!gridAvailable)}
+          onColor="#3B82F6"
+        />
+        <span style={{ fontSize: 10, color: gridAvailable ? "#3B82F6" : "#EF4444", fontWeight: 600 }}>
+          {gridAvailable ? "Bijli ON" : "Bijli OFF"}
+        </span>
+      </div>
       {!gridAvailable && (
         <div style={{ fontSize: 9, color: "#EF444488", lineHeight: 1.2 }}>
           {mode === "on-grid" ? "Solar bhi band" : "Battery backup"}
@@ -341,10 +290,10 @@ export function SchematicSVG() {
     : "#EF4444";
 
   return (
-    // 30vh container — full width, short height
+    // 40vh container — full width, short height
     <div className="w-full h-full" style={{ position: "relative" }}>
       <svg
-        viewBox="0 0 1000 320"
+        viewBox="0 0 1000 370"
         className="w-full h-full"
         preserveAspectRatio="xMidYMid meet"
         role="img"
@@ -362,12 +311,23 @@ export function SchematicSVG() {
             <feGaussianBlur stdDeviation="3" result="blur" />
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
+          {/* ── Arrowhead marker (FIX 6) ── */}
+          <marker
+            id="arrowhead"
+            markerWidth="6"
+            markerHeight="6"
+            refX="3"
+            refY="3"
+            orient="auto"
+          >
+            <path d="M 0 0 L 6 3 L 0 6 z" fill="currentColor" opacity="0.7" />
+          </marker>
         </defs>
-        <rect width="1000" height="320" fill="url(#grid-bg)" opacity="0.5" />
+        <rect width="1000" height="370" fill="url(#grid-bg)" opacity="0.5" />
 
-        {/* ── FLOW LINES ── */}
+        {/* ── FLOW LINES (FIX 6: arrowheads via PowerFlowLine) ── */}
 
-        {/* Solar → Inverter (horizontal, left to right) */}
+        {/* Solar → Inverter */}
         <PowerFlowLine
           pathD={PATHS.solar}
           powerW={isOnGridOffline || !solarOn ? 0 : effectiveSolarW}
@@ -381,7 +341,7 @@ export function SchematicSVG() {
           isActive={effectiveSolarW > 0 && !isOnGridOffline && solarOn}
         />
 
-        {/* Grid Import: Grid → Inverter (vertical, top to bottom) */}
+        {/* Grid Import: Grid → Inverter */}
         {showGrid && (
           <>
             <PowerFlowLine
@@ -400,7 +360,7 @@ export function SchematicSVG() {
           </>
         )}
 
-        {/* Grid Export: Inverter → Grid (vertical, bottom to top) */}
+        {/* Grid Export: Inverter → Grid */}
         {showGrid && (
           <>
             <PowerFlowLine
@@ -419,7 +379,7 @@ export function SchematicSVG() {
           </>
         )}
 
-        {/* Battery Charge: Inverter → Battery (horizontal, right) */}
+        {/* Battery Charge: Inverter → Battery */}
         {showBattery && (
           <>
             <PowerFlowLine
@@ -437,7 +397,7 @@ export function SchematicSVG() {
           </>
         )}
 
-        {/* Battery Discharge: Battery → Inverter (horizontal, left, dashed/reverse) */}
+        {/* Battery Discharge: Battery → Inverter */}
         {showBattery && (
           <>
             <PowerFlowLine
@@ -455,7 +415,7 @@ export function SchematicSVG() {
           </>
         )}
 
-        {/* Inverter → Ghar/Load (vertical, bottom) */}
+        {/* Inverter → Ghar/Load */}
         <PowerFlowLine
           pathD={PATHS.load}
           powerW={isOnGridOffline ? 0 : loadW}
@@ -471,26 +431,26 @@ export function SchematicSVG() {
 
         {/* ── COMPONENT NODES ── */}
 
-        {/* COL-1 TOP: Solar Panels — cx=110, cy=95, controlsHeight=105 */}
+        {/* COL-1 TOP: Solar Panels — cx=110, cy=85, controlsHeight=60 */}
         <motion.g
           initial={{ opacity: 0, scale: 0.7, x: -20 }}
           animate={{ opacity: solarOn ? 1 : 0.45, scale: 1, x: 0 }}
           transition={{ delay: 0, duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
         >
           <ComponentNode
-            cx={110} cy={95}
+            cx={110} cy={85}
             label="Solar Panels"
             subvalue={solarOn ? `${Math.round(effectiveSolarW)} W` : "0 W (OFF)"}
             iconType="sun"
             glowColor={solarOn ? "#F6C90E" : "#475569"}
             isActive={effectiveSolarW > 0 && !isOnGridOffline && solarOn}
-            tooltip="Ye panels suraj ki roshni ko bijli mein badal dete hain. Jitni dhoop, utni bijli — cloudy din mein 40% kam banta hai."
+            tooltip="Suraj ki roshni → bijli. Jitni dhoop, utni bijli."
             controls={<SolarNodeControls />}
-            controlsHeight={105}
+            controlsHeight={60}
           />
         </motion.g>
 
-        {/* COL-1 BOTTOM: UPPCL Grid — cx=110, cy=210, controlsHeight=72 */}
+        {/* COL-1 BOTTOM: UPPCL Grid — cx=110, cy=265, controlsHeight=50 */}
         <AnimatePresence mode="wait">
           {showGrid && (
             <motion.g
@@ -501,16 +461,16 @@ export function SchematicSVG() {
               transition={{ delay: 0.1, duration: 0.3, ease: "easeInOut" }}
             >
               <ComponentNode
-                cx={110} cy={210}
+                cx={110} cy={265}
                 label="UPPCL Grid"
                 subvalue={gridAvailable ? "Available" : "Disconnected"}
                 iconType="plug"
                 glowColor={gridAvailable ? "#3B82F6" : "#EF4444"}
                 isActive={gridAvailable}
                 danger={!gridAvailable}
-                tooltip="UPPCL ki line. On-Grid mein bijli kate toh solar bhi band ho jata hai — safety ke liye. Hybrid mein battery use hoti hai."
+                tooltip="UPPCL grid connection. Toggle to simulate power cut."
                 controls={<GridNodeControls />}
-                controlsHeight={72}
+                controlsHeight={50}
               />
             </motion.g>
           )}
@@ -530,11 +490,11 @@ export function SchematicSVG() {
             glowColor={inverterOverload ? "#EF4444" : "#F1F5F9"}
             isActive={!systemOffline}
             danger={inverterOverload}
-            tooltip="Inverter DC bijli ko AC mein badalta hai. Ghar mein saari bijli AC hoti hai. Iska size decide karta hai ek waqt mein kitna load chal sakta hai."
+            tooltip="DC→AC conversion. Handles all loads in your home."
           />
         </motion.g>
 
-        {/* COL-3 CENTER: Battery — cx=670, cy=150, controlsHeight=145 */}
+        {/* COL-3 CENTER: Battery — cx=670, cy=150, controlsHeight=90 */}
         <AnimatePresence mode="wait">
           {showBattery && (
             <motion.g
@@ -554,9 +514,9 @@ export function SchematicSVG() {
                 glowColor={batteryOn ? socColor : "#475569"}
                 isActive={batteryActive}
                 socPercent={batteryOn && useSimStore.getState().batteryKwh > 0 ? batterySoc : 0}
-                tooltip="Battery din mein charge hoti hai aur raat mein ya bijli kate tab use hoti hai. LiFePO4 battery 90% tak use ho sakti hai — lead-acid sirf 50%."
+                tooltip="Charges in the day, powers your home at night or during cuts."
                 controls={<BatteryNodeControls />}
-                controlsHeight={145}
+                controlsHeight={90}
               />
             </motion.g>
           )}
@@ -575,14 +535,14 @@ export function SchematicSVG() {
             iconType="house"
             glowColor="#F1F5F9"
             isActive={!systemOffline}
-            tooltip="Ghar ka total consumption. AC, fan, fridge, TV sab milake. Jitna kam load, utna zyada backup time."
+            tooltip="Total home consumption across all appliances."
           />
         </motion.g>
 
         {/* On-Grid grid-fail blackout overlay */}
         {isOnGridOffline && (
           <motion.rect
-            x={0} y={0} width={1000} height={320}
+            x={0} y={0} width={1000} height={370}
             fill="#000000"
             pointerEvents="none"
             initial={{ opacity: 0 }}

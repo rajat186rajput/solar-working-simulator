@@ -26,7 +26,8 @@ export function ParticleStream({ pathD, powerW = 0, flowType, isActive }: Partic
 
   const safePowerW = Number.isFinite(powerW) ? powerW : 0;
   const color = FLOW_COLORS[flowType];
-  const durationMs = Math.max(400, 2400 - (safePowerW / 3000) * 2000);
+  // FIX 6: duration proportional to watts — higher load = faster animation
+  const durationMs = Math.max(500, (3 - (safePowerW / 3000) * 2) * 1000);
   const radius = clamp(2 + safePowerW / 3000, 2, 4);
   const safeRadius = Number.isFinite(radius) ? radius : 2;
 
