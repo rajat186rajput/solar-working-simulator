@@ -16,6 +16,7 @@ interface SimInput {
   inverterWatts: number;
   loadW: number;
   currentNetMeterWh: number;
+  gridCharging?: boolean;     // when true + grid available, charge from grid to fill up to max charge rate
   surgeW?: number;            // if surge is active
 }
 
@@ -68,6 +69,7 @@ export function runSimulation(input: SimInput): SimResult {
     inverterWatts,
     loadW: rawLoadW,
     currentNetMeterWh,
+    gridCharging = false,
     surgeW,
   } = input;
 
@@ -207,17 +209,40 @@ export function runSimulation(input: SimInput): SimResult {
   else if (mode === "hybrid") {
     if (gridAvailable) {
       if (solarW === 0) {
-        gridImportW = rawLoadW;
-        netMeterWh -= rawLoadW * TICK_HOURS;
-        systemStatus = "Raat hai, suraj nahin — UPPCL ki bijli chal rahi hai";
-      } else if (surplus >= 0) {
-        if (!batteryEffectivelyOff && activeSoc < 1.0) {
-          const chargeW = Math.min(surplus, maxChargeW);
+        if (!batteryEffectivelyOff && gridCharging && activeSoc < 1.0) {
+          // Grid charging: fill battery from grid (at max charge rate)
+          const chargeW = maxChargeW;
           batteryChargeW = chargeW;
           const deltaKwh = (chargeW * TICK_HOURS) / 1000;
           batteryNewSoc = clamp(batterySoc + deltaKwh / batteryUsableKwh, 0, 1);
           if (batteryNewSoc >= 0.99) batteryNewSoc = 1.0;
-          systemStatus = "Dhoop se bijli banti hai, battery charge ho rahi hai";
+          gridImportW = rawLoadW + chargeW;
+          netMeterWh -= gridImportW * TICK_HOURS;
+          systemStatus = "Raat — grid se battery charge ho rahi hai";
+        } else {
+          gridImportW = rawLoadW;
+          netMeterWh -= rawLoadW * TICK_HOURS;
+          systemStatus = "Raat hai, suraj nahin — UPPCL ki bijli chal rahi hai";
+        }
+      } else if (surplus >= 0) {
+        if (!batteryEffectivelyOff && activeSoc < 1.0) {
+          const solarSurplusW = surplus;
+          // Grid charging: grid tops up what solar surplus doesn't cover up to maxChargeW
+          const gridChargeTopUpW = (gridCharging && gridAvailable)
+            ? Math.max(0, maxChargeW - solarSurplusW)
+            : 0;
+          const totalChargeW = Math.min(maxChargeW, solarSurplusW + gridChargeTopUpW);
+          batteryChargeW = totalChargeW;
+          const deltaKwh = (totalChargeW * TICK_HOURS) / 1000;
+          batteryNewSoc = clamp(batterySoc + deltaKwh / batteryUsableKwh, 0, 1);
+          if (batteryNewSoc >= 0.99) batteryNewSoc = 1.0;
+          if (gridChargeTopUpW > 0) {
+            gridImportW = gridChargeTopUpW;
+            netMeterWh -= gridChargeTopUpW * TICK_HOURS;
+            systemStatus = "Solar + grid dono se battery fast charge ho rahi hai";
+          } else {
+            systemStatus = "Dhoop se bijli banti hai, battery charge ho rahi hai";
+          }
         } else {
           // Battery full or disconnected — export to grid
           gridExportW = surplus;

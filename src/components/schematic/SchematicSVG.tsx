@@ -49,11 +49,11 @@ const SOLAR_KWP_OPTIONS = [
 
 // ─── Battery capacity presets ──────────────────────────────────────────────
 const BATTERY_KWH_OPTIONS = [
-  { label: "None",    kwh: 0  },
-  { label: "5 kWh",  kwh: 5  },
-  { label: "10 kWh", kwh: 10 },
-  { label: "15 kWh", kwh: 15 },
-  { label: "20 kWh", kwh: 20 },
+  { label: "5 kWh",   kwh: 5   },
+  { label: "7.5 kWh", kwh: 7.5 },
+  { label: "10 kWh",  kwh: 10  },
+  { label: "15 kWh",  kwh: 15  },
+  { label: "20 kWh",  kwh: 20  },
 ];
 
 const BATTERY_TYPE_OPTIONS = [
@@ -187,15 +187,16 @@ function BatteryNodeControls() {
     batteryChargeW, batteryDischargeW,
     loadW,
     socLocked, setSocLocked,
+    gridCharging, setGridCharging,
+    gridAvailable, mode,
   } = useSimStore();
 
   const handleKwhChange = (kwh: number) => {
     setBatteryKwh(kwh);
-    // If selecting None, turn off battery
-    if (kwh <= 0 && batteryOn) toggleBattery();
-    // If selecting a real capacity and battery was off (due to None), turn on
-    if (kwh > 0 && !batteryOn) toggleBattery();
   };
+
+  // Grid charging is only relevant when grid is available (hybrid / on-grid modes)
+  const gridChargingApplicable = gridAvailable && (mode === "hybrid" || mode === "on-grid");
 
   const backupHrs = batteryOn && batteryKwh > 0
     ? calcBackupHours(batterySoc, batteryKwh, batteryType, loadW)
@@ -304,14 +305,28 @@ function BatteryNodeControls() {
       <select
         value={batteryType}
         onChange={(e) => setBatteryType(e.target.value as "lifepo4" | "lead-acid")}
-        disabled={batteryKwh <= 0 || !batteryOn}
-        style={{ ...SELECT_STYLE, opacity: batteryKwh > 0 && batteryOn ? 1 : 0.45 }}
+        disabled={!batteryOn}
+        style={{ ...SELECT_STYLE, opacity: batteryOn ? 1 : 0.45 }}
         aria-label="Battery chemistry"
       >
         {BATTERY_TYPE_OPTIONS.map((o) => (
           <option key={o.value} value={o.value}>{o.label}</option>
         ))}
       </select>
+
+      {/* Grid Charging toggle — only shown when grid modes available */}
+      {gridChargingApplicable && (
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <CompactToggle
+            isOn={gridCharging}
+            onToggle={() => setGridCharging(!gridCharging)}
+            onColor="#3B82F6"
+          />
+          <span style={{ fontSize: 10, color: gridCharging ? "#3B82F6" : "#64748B", fontWeight: 600 }}>
+            Grid Charging
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -680,7 +695,7 @@ export function SchematicSVG() {
                 socPercent={batteryOn && useSimStore.getState().batteryKwh > 0 ? batterySoc : 0}
                 tooltip="Charges in the day, powers your home at night or during cuts."
                 controls={<BatteryNodeControls />}
-                controlsHeight={145}
+                controlsHeight={172}
               />
             </motion.g>
           )}

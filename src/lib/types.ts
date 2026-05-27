@@ -71,6 +71,7 @@ export interface SimState {
   panelKwp: number;
   solarOn: boolean;
   inverterWatts: number;
+  gridCharging: boolean;        // when true + grid available, charge battery from grid
   appliancesOn: string[];
   applianceQtys: ApplianceQtyEntry[];
   gridOnlyAppliances: Set<string>;  // appliance IDs that are "Grid Only"
