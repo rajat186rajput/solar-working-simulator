@@ -113,8 +113,8 @@ const INITIAL_STATE: SimState & { socLocked: boolean; gharDrawerOpen: boolean; g
   applianceQtys: DEFAULT_APPLIANCE_QTYS.map((e) => ({ ...e })),
   gridOnlyAppliances: new Set<string>(),
   socLocked: true,
-  gharDrawerOpen: false,
-  gharDrawerPinned: false,
+  gharDrawerOpen: true,
+  gharDrawerPinned: true,
 
   solarW: getSolarW(14, "clear", 5),
   loadW: calcTotalLoadQty(DEFAULT_APPLIANCE_QTYS),
