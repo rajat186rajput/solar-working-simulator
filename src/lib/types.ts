@@ -16,7 +16,7 @@ export interface ApplianceData {
   watts: number;          // continuous watts
   surgeWatts: number;     // startup surge
   typicalHoursPerDay: string;
-  category: "Cooling" | "Lighting" | "Kitchen" | "Utility" | "Entertainment" | "Vehicle";
+  category: "Cooling" | "Lighting" | "Kitchen" | "Utility" | "Entertainment" | "Vehicle" | "Office" | "Personal Care";
   wide?: boolean;          // bento grid 2-col span
   defaultQty?: number;     // default quantity (1 if omitted)
 }
