@@ -162,10 +162,15 @@ function SolarNodeControls() {
   );
 }
 
-// ─── Battery DOD factors (mirrors simulation.ts constants) ───────────────
+// ─── Battery constants (mirrors simulation.ts) ───────────────────────────
 const DOD_FACTOR: Record<"lifepo4" | "lead-acid", number> = {
   lifepo4: 0.90,
   "lead-acid": 0.50,
+};
+// C-rate for max charge/discharge (same as simulation.ts)
+const C_RATE: Record<"lifepo4" | "lead-acid", number> = {
+  lifepo4: 0.5,
+  "lead-acid": 0.2,
 };
 const INVERTER_EFF = 0.95;
 
@@ -184,8 +189,8 @@ function BatteryNodeControls() {
     batteryType, setBatteryType,
     batteryOn, toggleBattery,
     batterySoc, setBatterySoc,
-    batteryChargeW, batteryDischargeW,
     loadW,
+    gridAvailable,
     socLocked, setSocLocked,
   } = useSimStore();
 
@@ -205,16 +210,28 @@ function BatteryNodeControls() {
     : batterySoc >= 0.2 ? "#F97316"
     : "#EF4444";
 
-  // Time estimates
-  const usableKwh = batteryKwh * DOD_FACTOR[batteryType] * INVERTER_EFF;
-  const usableWh = usableKwh * 1000;
+  // Time estimates — always based on battery spec (max C-rate), not variable solar/grid watts
+  const usableWh = batteryKwh * DOD_FACTOR[batteryType] * INVERTER_EFF * 1000;
+  const maxChargeW = batteryKwh * 1000 * C_RATE[batteryType];
+  const maxDischargeW = maxChargeW; // same C-rate for discharge
+
+  // Charging: grid available means battery always charges at max rate
+  const canCharge = gridAvailable;
+  const timeToFullH = canCharge && batterySoc < 0.99
+    ? ((1 - batterySoc) * usableWh) / maxChargeW
+    : null;
+
+  // Discharging: no grid and load is drawing power
+  const isDischarging = !gridAvailable && loadW > 0;
+  const timeToEmptyH = isDischarging && batterySoc > 0.01
+    ? (batterySoc * usableWh) / maxDischargeW
+    : null;
+
   let timeEstimate: string;
-  if (batteryChargeW > 0) {
-    const hoursToFull = ((1 - batterySoc) * usableWh) / batteryChargeW;
-    timeEstimate = `⚡ Full in ${fmtHours(hoursToFull)}`;
-  } else if (batteryDischargeW > 0) {
-    const hoursToEmpty = (batterySoc * usableWh) / batteryDischargeW;
-    timeEstimate = `🔋 Empty in ${fmtHours(hoursToEmpty)}`;
+  if (timeToFullH !== null) {
+    timeEstimate = `⚡ Full in ${fmtHours(timeToFullH)}`;
+  } else if (timeToEmptyH !== null) {
+    timeEstimate = `🔋 Empty in ${fmtHours(timeToEmptyH)}`;
   } else {
     timeEstimate = "~ Idle";
   }
