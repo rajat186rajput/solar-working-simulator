@@ -248,12 +248,23 @@ export function runSimulation(input: SimInput): SimResult {
             : "Battery disconnected — surplus solar grid ko ja rahi hai";
         }
       } else {
-        // Deficit — grid preferred in hybrid when grid available
-        gridImportW = deficit;
-        netMeterWh -= deficit * TICK_HOURS;
-        systemStatus = !batteryEffectivelyOff
-          ? "Solar kam — thodi bijli UPPCL se le rahe hain (battery reserve mein hai)"
-          : "Solar kam — UPPCL se le rahe hain (battery disconnected)";
+        // Deficit — grid covers load deficit AND charges battery (always-on grid charging)
+        if (!batteryEffectivelyOff && activeSoc < 1.0) {
+          const chargeW = maxChargeW;
+          batteryChargeW = chargeW;
+          const deltaKwh = (chargeW * TICK_HOURS) / 1000;
+          batteryNewSoc = clamp(batterySoc + deltaKwh / batteryUsableKwh, 0, 1);
+          if (batteryNewSoc >= 0.99) batteryNewSoc = 1.0;
+          gridImportW = deficit + chargeW;
+          netMeterWh -= gridImportW * TICK_HOURS;
+          systemStatus = "Solar kam — grid load + battery dono charge kar raha hai";
+        } else {
+          gridImportW = deficit;
+          netMeterWh -= deficit * TICK_HOURS;
+          systemStatus = !batteryEffectivelyOff
+            ? "Solar kam — thodi bijli UPPCL se le rahe hain (battery full hai)"
+            : "Solar kam — UPPCL se le rahe hain (battery disconnected)";
+        }
       }
     } else {
       // Grid fails — hybrid operates like off-grid
