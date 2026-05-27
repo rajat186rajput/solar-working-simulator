@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
 import { APPLIANCES, CATEGORY_COLORS } from "@/lib/appliances";
 import { useSimStore } from "@/store/simulation-store";
+import { L } from "@/lib/i18n";
 import {
   Wind, Lightbulb, Refrigerator, Tv, Droplets,
   Flame, WashingMachine, Microwave, Shirt, Blender, Car, Zap,
@@ -30,7 +31,7 @@ const HEAVY_APPLIANCE_IDS = new Set(
 );
 
 export function ApplianceGrid() {
-  const { applianceQtys, gridOnlyAppliances, toggleAppliance, setApplianceQty, toggleGridOnly, solarW } = useSimStore();
+  const { applianceQtys, gridOnlyAppliances, toggleAppliance, setApplianceQty, toggleGridOnly, solarW, lang } = useSimStore();
 
   // Compute per-appliance solar coverage: cumulative watts in APPLIANCES order
   // Appliances covered within solarW budget get ☀️ Solar badge, rest get ⚡ Grid
@@ -108,12 +109,12 @@ export function ApplianceGrid() {
                 style={{ color: isOn ? "#F1F5F9" : "#64748B" }}
                 onClick={() => toggleAppliance(appliance.id)}
               >
-                {appliance.hinglishLabel}
+                {lang === "hi" ? appliance.hinglishLabel : appliance.name}
               </div>
 
               {/* Per-item wattage */}
               <div className="text-[10px] leading-none" style={{ color: "#475569" }}>
-                {appliance.watts}W each
+                {appliance.watts}{L(lang, "wEach")}
               </div>
 
               {/* Watts display */}
@@ -130,7 +131,7 @@ export function ApplianceGrid() {
                   className="text-[9px] font-semibold leading-none"
                   style={{ color: isSolarPowered ? "#84CC16" : "#60A5FA" }}
                 >
-                  {isSolarPowered ? "☀️ Solar" : "⚡ Grid"}
+                  {isSolarPowered ? L(lang, "solarBadge") : L(lang, "gridBadge")}
                 </div>
               )}
 
@@ -190,7 +191,7 @@ export function ApplianceGrid() {
                   aria-label={`${isGridOnly ? "Disable" : "Enable"} Grid Only mode for ${appliance.name}`}
                   title="Grid Only: this appliance is excluded from solar/battery load"
                 >
-                  {isGridOnly ? "⚡ Grid Only" : "⚡ Grid"}
+                  {isGridOnly ? `⚡ ${L(lang, "gridOnly")}` : "⚡ Grid"}
                 </button>
               )}
             </motion.div>

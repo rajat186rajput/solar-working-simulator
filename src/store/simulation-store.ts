@@ -34,6 +34,9 @@ interface SimStore extends SimState {
   gharDrawerPinned: boolean;
   setGharDrawerOpen: (v: boolean) => void;
   setGharDrawerPinned: (v: boolean) => void;
+  // Language toggle
+  lang: "en" | "hi";
+  setLang: (l: "en" | "hi") => void;
 }
 
 function computeState(state: Partial<SimState> & { socLocked?: boolean }): Partial<SimState> {
@@ -97,7 +100,7 @@ function computeState(state: Partial<SimState> & { socLocked?: boolean }): Parti
   };
 }
 
-const INITIAL_STATE: SimState & { socLocked: boolean; gharDrawerOpen: boolean; gharDrawerPinned: boolean } = {
+const INITIAL_STATE: SimState & { socLocked: boolean; gharDrawerOpen: boolean; gharDrawerPinned: boolean; lang: "en" | "hi" } = {
   mode: "hybrid",
   timeHour: 14,
   dayType: "clear",
@@ -115,6 +118,7 @@ const INITIAL_STATE: SimState & { socLocked: boolean; gharDrawerOpen: boolean; g
   socLocked: true,
   gharDrawerOpen: true,
   gharDrawerPinned: true,
+  lang: "en",
 
   solarW: getSolarW(14, "clear", 5),
   loadW: calcTotalLoadQty(DEFAULT_APPLIANCE_QTYS),
@@ -132,7 +136,7 @@ const INITIAL_STATE: SimState & { socLocked: boolean; gharDrawerOpen: boolean; g
 
 // Apply initial computation
 const computed = computeState(INITIAL_STATE);
-const BOOT_STATE: SimState & { socLocked: boolean; gharDrawerOpen: boolean; gharDrawerPinned: boolean } = { ...INITIAL_STATE, ...computed };
+const BOOT_STATE: SimState & { socLocked: boolean; gharDrawerOpen: boolean; gharDrawerPinned: boolean; lang: "en" | "hi" } = { ...INITIAL_STATE, ...computed };
 
 export const useSimStore = create<SimStore>((set, get) => ({
   ...BOOT_STATE,
@@ -295,5 +299,9 @@ export const useSimStore = create<SimStore>((set, get) => ({
 
   setGharDrawerPinned(v: boolean) {
     set({ gharDrawerPinned: v });
+  },
+
+  setLang(lang: "en" | "hi") {
+    set({ lang });
   },
 }));

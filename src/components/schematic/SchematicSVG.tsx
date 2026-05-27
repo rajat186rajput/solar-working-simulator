@@ -8,6 +8,7 @@ import { PowerFlowLine } from "./PowerFlowLine";
 import { ParticleStream } from "./ParticleStream";
 import { ComponentNode } from "./ComponentNode";
 import { ApplianceGrid } from "@/components/controls/ApplianceGrid";
+import { L } from "@/lib/i18n";
 
 // ─── Layout (viewBox 0 0 1000 370) — pure LEFT-TO-RIGHT pipeline ──────────────
 //
@@ -123,7 +124,7 @@ function CompactToggle({
 
 // ─── Solar node controls (FIX 3 + FIX 5 + FIX 8) ─────────────────────────
 function SolarNodeControls() {
-  const { solarOn, toggleSolar, panelKwp, setPanelKwp } = useSimStore();
+  const { solarOn, toggleSolar, panelKwp, setPanelKwp, lang } = useSimStore();
 
   return (
     <div
@@ -139,7 +140,7 @@ function SolarNodeControls() {
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <CompactToggle isOn={solarOn} onToggle={toggleSolar} onColor="#F6C90E" />
         <span style={{ fontSize: 10, color: solarOn ? "#F6C90E" : "#64748B", fontWeight: 600 }}>
-          {solarOn ? "ON" : "OFF"}
+          {solarOn ? L(lang, "batteryOn") : L(lang, "batteryOff")}
         </span>
       </div>
 
@@ -194,6 +195,7 @@ function BatteryNodeControls() {
     loadW,
     gridAvailable,
     socLocked, setSocLocked,
+    lang,
   } = useSimStore();
 
   const handleKwhChange = (kwh: number) => {
@@ -231,11 +233,11 @@ function BatteryNodeControls() {
 
   let timeEstimate: string;
   if (timeToFullH !== null) {
-    timeEstimate = `⚡ Full in ${fmtHours(timeToFullH)}`;
+    timeEstimate = `⚡ ${L(lang, "fullIn")} ${fmtHours(timeToFullH)}`;
   } else if (timeToEmptyH !== null) {
-    timeEstimate = `🔋 Empty in ${fmtHours(timeToEmptyH)}`;
+    timeEstimate = `🔋 ${L(lang, "emptyIn")} ${fmtHours(timeToEmptyH)}`;
   } else {
-    timeEstimate = "~ Idle";
+    timeEstimate = L(lang, "idle");
   }
 
   return (
@@ -244,11 +246,11 @@ function BatteryNodeControls() {
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <CompactToggle isOn={batteryOn} onToggle={toggleBattery} onColor="#10B981" />
         <span style={{ fontSize: 10, color: batteryOn ? "#10B981" : "#64748B", fontWeight: 600 }}>
-          {batteryOn ? "ON" : "OFF"}
+          {batteryOn ? L(lang, "batteryOn") : L(lang, "batteryOff")}
         </span>
         {/* Backup time */}
         <span style={{ marginLeft: "auto", fontSize: 9, color: "#64748B", fontVariantNumeric: "tabular-nums" }}>
-          Backup: <span style={{ color: socColor, fontWeight: 700 }}>{backupDisplay}</span>
+          {L(lang, "backupIn")}: <span style={{ color: socColor, fontWeight: 700 }}>{backupDisplay}</span>
         </span>
       </div>
 
@@ -274,7 +276,7 @@ function BatteryNodeControls() {
             {socLocked ? "🔒" : "🔓"}
           </button>
           <span style={{ fontSize: 9, color: "#475569", marginLeft: 2 }}>
-            {socLocked ? "manual" : "auto"}
+            {socLocked ? L(lang, "manual") : L(lang, "auto")}
           </span>
         </div>
         <input
@@ -334,7 +336,7 @@ function BatteryNodeControls() {
 
 // ─── Grid node controls (FIX 5 + FIX 9) ──────────────────────────────────
 function GridNodeControls() {
-  const { gridAvailable, setGridAvailable, mode } = useSimStore();
+  const { gridAvailable, setGridAvailable, mode, lang } = useSimStore();
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "4px 2px 0" }}>
@@ -345,7 +347,7 @@ function GridNodeControls() {
           onColor="#3B82F6"
         />
         <span style={{ fontSize: 10, color: gridAvailable ? "#3B82F6" : "#EF4444", fontWeight: 600 }}>
-          {gridAvailable ? "Bijli ON" : "Bijli OFF"}
+          {gridAvailable ? L(lang, "gridBijli") : L(lang, "gridOff")}
         </span>
       </div>
       {!gridAvailable && (
@@ -369,6 +371,8 @@ export function GharDrawerContents({
   isPinned: boolean;
   onPinToggle: () => void;
 }) {
+  const { lang } = useSimStore();
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -377,8 +381,7 @@ export function GharDrawerContents({
         style={{ background: "#1E293B" }}
       >
         <div className="flex items-center gap-2">
-          <span className="text-base">🏠</span>
-          <span className="text-sm font-semibold text-text-primary">Ghar Load</span>
+          <span className="text-sm font-semibold text-text-primary">{L(lang, "appliancesTitle")}</span>
         </div>
         <div className="flex items-center gap-1">
           {/* Pin / unpin button */}
@@ -498,6 +501,7 @@ export function SchematicSVG() {
     gharDrawerPinned,
     setGharDrawerOpen,
     setGharDrawerPinned,
+    lang,
   } = useSimStore();
 
   const openGharDrawer  = useCallback(() => setGharDrawerOpen(true),  [setGharDrawerOpen]);
@@ -749,7 +753,7 @@ export function SchematicSVG() {
         >
           <ComponentNode
             cx={110} cy={85}
-            label="Solar Panels"
+            label={L(lang, "solarPanels")}
             subvalue={solarOn ? `${Math.round(effectiveSolarW)} W` : "0 W (OFF)"}
             iconType="sun"
             glowColor={solarOn ? "#F6C90E" : "#475569"}
@@ -772,8 +776,8 @@ export function SchematicSVG() {
             >
               <ComponentNode
                 cx={110} cy={265}
-                label="UPPCL Grid"
-                subvalue={gridAvailable ? "Available" : "Disconnected"}
+                label={L(lang, "grid")}
+                subvalue={gridAvailable ? L(lang, "gridAvail") : L(lang, "gridOff")}
                 iconType="plug"
                 glowColor={gridAvailable ? "#3B82F6" : "#EF4444"}
                 isActive={gridAvailable}
@@ -794,7 +798,13 @@ export function SchematicSVG() {
         >
           <ComponentNode
             cx={430} cy={150}
-            label={mode === "on-grid" ? "On-Grid Inverter" : mode === "off-grid" ? "Off-Grid Inverter" : "Hybrid Inverter"}
+            label={
+              mode === "on-grid"
+                ? L(lang, "onGrid") + (lang === "en" ? " Inverter" : " इन्वर्टर")
+                : mode === "off-grid"
+                ? L(lang, "offGrid") + (lang === "en" ? " Inverter" : " इन्वर्टर")
+                : L(lang, "inverter")
+            }
             subvalue={inverterOverload ? "OVERLOAD!" : `${(useSimStore.getState().inverterWatts / 1000).toFixed(1)} kW`}
             iconType="zap"
             glowColor={inverterOverload ? "#EF4444" : "#F1F5F9"}
@@ -816,7 +826,7 @@ export function SchematicSVG() {
             >
               <ComponentNode
                 cx={670} cy={150}
-                label="Battery"
+                label={L(lang, "battery")}
                 subvalue={batteryOn && useSimStore.getState().batteryKwh > 0
                   ? `${Math.round(batterySoc * 100)}%`
                   : batteryOn ? "No Battery" : "Disabled"}
@@ -844,7 +854,7 @@ export function SchematicSVG() {
         >
           <ComponentNode
             cx={890} cy={150}
-            label="Ghar (Load)"
+            label={L(lang, "gharLoad")}
             subvalue={`${Math.round(loadW)} W`}
             iconType="house"
             glowColor="#F1F5F9"

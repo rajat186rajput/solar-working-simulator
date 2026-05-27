@@ -6,19 +6,24 @@ import { Undo2, HelpCircle } from "lucide-react";
 import { useSimStore } from "@/store/simulation-store";
 import type { DayType } from "@/lib/types";
 import { formatTime } from "@/lib/utils";
+import { L, type LabelKey } from "@/lib/i18n";
 
-const DAY_TYPES: { value: DayType; label: string; icon: string }[] = [
-  { value: "clear",   label: "Clear",   icon: "☀️" },
-  { value: "cloudy",  label: "Cloudy",  icon: "⛅" },
-  { value: "monsoon", label: "Monsoon", icon: "🌧️" },
+type TimePreset = { key: LabelKey; icon: string; hour: number };
+
+const TIME_PRESETS: TimePreset[] = [
+  { key: "dawn",    icon: "🌅", hour: 6  },
+  { key: "morning", icon: "☀️", hour: 10 },
+  { key: "noon",    icon: "🌞", hour: 12 },
+  { key: "evening", icon: "🌆", hour: 17 },
+  { key: "night",   icon: "🌙", hour: 22 },
 ];
 
-const TIME_PRESETS: { label: string; icon: string; hour: number }[] = [
-  { label: "Dawn",    icon: "🌅", hour: 6  },
-  { label: "Morning", icon: "☀️", hour: 10 },
-  { label: "Noon",    icon: "🌞", hour: 12 },
-  { label: "Evening", icon: "🌆", hour: 17 },
-  { label: "Night",   icon: "🌙", hour: 22 },
+type DayTypePreset = { value: DayType; key: LabelKey; icon: string };
+
+const DAY_TYPES: DayTypePreset[] = [
+  { value: "clear",   key: "clear",   icon: "☀️" },
+  { value: "cloudy",  key: "cloudy",  icon: "⛅" },
+  { value: "monsoon", key: "monsoon", icon: "🌧️" },
 ];
 
 function LogoMark() {
@@ -66,6 +71,8 @@ export function TopBar() {
     dayType,
     setTimeHour,
     setDayType,
+    lang,
+    setLang,
   } = useSimStore();
 
   const hasAlert = systemOffline || inverterOverload;
@@ -116,10 +123,10 @@ export function TopBar() {
                   : "border-surface-stroke text-text-muted hover:border-surface-stroke/80"
               }`}
               aria-pressed={isActive}
-              aria-label={`Set time to ${preset.label} (${formatTime(preset.hour)})`}
+              aria-label={`Set time to ${L(lang, preset.key)} (${formatTime(preset.hour)})`}
             >
               <span>{preset.icon}</span>
-              <span className="hidden md:inline">{preset.label}</span>
+              <span className="hidden md:inline">{L(lang, preset.key)}</span>
             </button>
           );
         })}
@@ -128,7 +135,7 @@ export function TopBar() {
       {/* ── DIVIDER ── */}
       <div className="w-px self-stretch bg-surface-stroke shrink-0" />
 
-      {/* ── RIGHT GROUP: Weather buttons + Reset + Help ── */}
+      {/* ── RIGHT GROUP: Weather + Language toggle + Reset + Help ── */}
       <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
         {/* Weather buttons */}
         {DAY_TYPES.map((dt) => (
@@ -141,14 +148,48 @@ export function TopBar() {
                 : "border-surface-stroke text-text-muted hover:border-surface-stroke/80"
             }`}
             aria-pressed={dayType === dt.value}
-            aria-label={`Set weather to ${dt.label}`}
+            aria-label={`Set weather to ${L(lang, dt.key)}`}
           >
             <span>{dt.icon}</span>
-            <span className="hidden lg:inline">{dt.label}</span>
+            <span className="hidden lg:inline">{L(lang, dt.key)}</span>
           </button>
         ))}
 
         {/* Divider before actions */}
+        <div className="w-px self-stretch bg-surface-stroke mx-0.5" />
+
+        {/* Language toggle pill */}
+        <div
+          className="flex items-center gap-0.5 bg-surface-card rounded-lg p-0.5 border border-surface-stroke"
+          aria-label="Language toggle"
+        >
+          <button
+            onClick={() => setLang("en")}
+            className={`px-2 py-1 text-xs rounded-md transition-colors ${
+              lang === "en"
+                ? "bg-solar text-black font-semibold"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+            aria-pressed={lang === "en"}
+            aria-label="Switch to English"
+          >
+            EN
+          </button>
+          <button
+            onClick={() => setLang("hi")}
+            className={`px-2 py-1 text-xs rounded-md transition-colors ${
+              lang === "hi"
+                ? "bg-solar text-black font-semibold"
+                : "text-text-muted hover:text-text-primary"
+            }`}
+            aria-pressed={lang === "hi"}
+            aria-label="Switch to Hindi"
+          >
+            हिं
+          </button>
+        </div>
+
+        {/* Divider before reset/help */}
         <div className="w-px self-stretch bg-surface-stroke mx-0.5" />
 
         {/* Reset */}
@@ -161,7 +202,7 @@ export function TopBar() {
           title="Reset to default state"
         >
           <Undo2 size={12} />
-          <span className="hidden sm:inline">Reset</span>
+          <span className="hidden sm:inline">{L(lang, "reset")}</span>
         </motion.button>
 
         {/* Help */}
