@@ -25,13 +25,9 @@ const ICON_MAP: Record<string, React.ReactNode> = {
   ev:        <Car size={14} />,
 };
 
-// Appliances that should have the "Grid Only" toggle (watts >= 800W)
-const HEAVY_APPLIANCE_IDS = new Set(
-  APPLIANCES.filter((a) => a.watts >= 800).map((a) => a.id)
-);
 
 export function ApplianceGrid() {
-  const { applianceQtys, gridOnlyAppliances, toggleAppliance, setApplianceQty, toggleGridOnly, lang } = useSimStore();
+  const { applianceQtys, toggleAppliance, setApplianceQty, lang } = useSimStore();
 
   return (
     <div className="flex flex-col h-full">
@@ -45,8 +41,6 @@ export function ApplianceGrid() {
           const isOn = entry?.isOn ?? false;
           const qty = entry?.qty ?? 1;
           const catColor = CATEGORY_COLORS[appliance.category] || "#94A3B8";
-          const isHeavy = HEAVY_APPLIANCE_IDS.has(appliance.id);
-          const isGridOnly = gridOnlyAppliances.has(appliance.id);
 
           return (
             <motion.div
@@ -58,7 +52,7 @@ export function ApplianceGrid() {
                 borderColor: isOn ? catColor : "#334155",
               }}
               transition={{ duration: 0.2 }}
-              className="rounded-lg border p-1.5 select-none flex flex-col gap-0.5"
+              className="relative rounded-lg border p-1.5 select-none flex flex-col gap-0.5"
               role="checkbox"
               aria-checked={isOn}
               aria-label={`Toggle ${appliance.name} (${appliance.watts}W × ${qty})`}
@@ -99,65 +93,26 @@ export function ApplianceGrid() {
                 {appliance.watts}{L(lang, "wEach")}
               </div>
 
-              {/* Quantity stepper */}
-              <div className="flex items-center gap-0.5 mt-0.5">
+              {/* Qty counter — top-right overlay badge */}
+              <div className="absolute top-1 right-1 flex items-center gap-0.5 bg-black/40 rounded px-0.5">
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setApplianceQty(appliance.id, qty - 1);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); setApplianceQty(appliance.id, qty - 1); }}
                   disabled={qty <= 0}
-                  className="w-5 h-5 rounded flex items-center justify-center text-[11px] font-bold leading-none transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  style={{
-                    backgroundColor: isOn ? `${catColor}20` : "rgba(51,65,85,0.4)",
-                    color: isOn ? catColor : "#475569",
-                  }}
+                  className="text-[10px] w-4 h-4 flex items-center justify-center text-text-muted hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
                   aria-label={`Decrease ${appliance.name} quantity`}
                 >
                   −
                 </button>
-                <span
-                  className="text-[10px] font-bold tabular-nums w-4 text-center"
-                  style={{ color: isOn ? "#F1F5F9" : "#475569" }}
-                >
-                  {qty}
-                </span>
+                <span className="text-[10px] font-semibold text-white min-w-[10px] text-center">{qty}</span>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setApplianceQty(appliance.id, qty + 1);
-                  }}
+                  onClick={(e) => { e.stopPropagation(); setApplianceQty(appliance.id, qty + 1); }}
                   disabled={qty >= 10}
-                  className="w-5 h-5 rounded flex items-center justify-center text-[11px] font-bold leading-none transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                  style={{
-                    backgroundColor: isOn ? `${catColor}20` : "rgba(51,65,85,0.4)",
-                    color: isOn ? catColor : "#475569",
-                  }}
+                  className="text-[10px] w-4 h-4 flex items-center justify-center text-text-muted hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
                   aria-label={`Increase ${appliance.name} quantity`}
                 >
                   +
                 </button>
               </div>
-
-              {/* Grid Only toggle — heavy appliances only (watts >= 800W) */}
-              {isHeavy && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleGridOnly(appliance.id);
-                  }}
-                  className="mt-0.5 rounded text-[9px] font-semibold leading-none px-1 py-0.5 transition-colors"
-                  style={{
-                    backgroundColor: isGridOnly ? "rgba(234,179,8,0.15)" : "rgba(51,65,85,0.4)",
-                    color: isGridOnly ? "#EAB308" : "#475569",
-                    border: isGridOnly ? "1px solid rgba(234,179,8,0.4)" : "1px solid transparent",
-                  }}
-                  aria-label={`${isGridOnly ? "Disable" : "Enable"} Grid Only mode for ${appliance.name}`}
-                  title="Grid Only: this appliance is excluded from solar/battery load"
-                >
-                  {isGridOnly ? `⚡ ${L(lang, "gridOnly")}` : "⚡ Grid"}
-                </button>
-              )}
             </motion.div>
           );
         })}
