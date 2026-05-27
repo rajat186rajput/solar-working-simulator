@@ -5,7 +5,6 @@ import { Switch } from "@/components/ui/switch";
 import { APPLIANCES, CATEGORY_COLORS } from "@/lib/appliances";
 import { useSimStore } from "@/store/simulation-store";
 import { L } from "@/lib/i18n";
-import { calcMonthlyCost, fmtRs, parseHours } from "@/lib/tariff";
 import {
   Wind, Lightbulb, Refrigerator, Tv, Droplets,
   Flame, WashingMachine, Microwave, Shirt, Blender, Car, Zap,
@@ -32,38 +31,7 @@ const HEAVY_APPLIANCE_IDS = new Set(
 );
 
 export function ApplianceGrid() {
-  const { applianceQtys, gridOnlyAppliances, toggleAppliance, setApplianceQty, toggleGridOnly, solarW, lang } = useSimStore();
-
-  // Compute per-appliance solar coverage: cumulative watts in APPLIANCES order
-  // Appliances covered within solarW budget get ☀️ Solar badge, rest get ⚡ Grid
-  let cumulativeW = 0;
-  const solarCoveredIds = new Set<string>();
-  for (const appliance of APPLIANCES) {
-    const entry = applianceQtys.find((e) => e.id === appliance.id);
-    const isOn = entry?.isOn ?? false;
-    const qty = entry?.qty ?? 1;
-    if (!isOn) continue;
-    const appW = qty * appliance.watts;
-    if (cumulativeW + appW <= solarW) {
-      solarCoveredIds.add(appliance.id);
-    }
-    cumulativeW += appW;
-  }
-
-  // Total across all ON appliances — for summary row
-  let totalW = 0;
-  let totalKwh = 0;
-  for (const appliance of APPLIANCES) {
-    const entry = applianceQtys.find((e) => e.id === appliance.id);
-    if (!entry?.isOn) continue;
-    const qty = entry.qty ?? 1;
-    const effectiveW = qty * appliance.watts;
-    totalW += effectiveW;
-    const hrs = parseHours(appliance.typicalHoursPerDay)
-    totalKwh += effectiveW * hrs * 30 / 1000
-  }
-  const totalKwhRounded = Math.round(totalKwh)
-  const totalCostRs = calcMonthlyCost(totalKwhRounded)
+  const { applianceQtys, gridOnlyAppliances, toggleAppliance, setApplianceQty, toggleGridOnly, lang } = useSimStore();
 
   return (
     <div className="flex flex-col h-full">
@@ -77,10 +45,8 @@ export function ApplianceGrid() {
           const isOn = entry?.isOn ?? false;
           const qty = entry?.qty ?? 1;
           const catColor = CATEGORY_COLORS[appliance.category] || "#94A3B8";
-          const effectiveW = isOn ? qty * appliance.watts : 0;
           const isHeavy = HEAVY_APPLIANCE_IDS.has(appliance.id);
           const isGridOnly = gridOnlyAppliances.has(appliance.id);
-          const isSolarPowered = isOn && solarCoveredIds.has(appliance.id);
 
           return (
             <motion.div
@@ -132,36 +98,6 @@ export function ApplianceGrid() {
               <div className="text-[10px] leading-none" style={{ color: "#475569" }}>
                 {appliance.watts}{L(lang, "wEach")}
               </div>
-
-              {/* Watts display */}
-              <div
-                className="text-[10px] font-bold tabular-nums leading-none"
-                style={{ color: isOn ? catColor : "#334155" }}
-              >
-                {isOn ? `${effectiveW}W` : "—"}
-              </div>
-
-              {/* kWh / ₹ cost display — ON appliances only */}
-              {isOn && (() => {
-                const hrs = parseHours(appliance.typicalHoursPerDay)
-                const kwh = Math.round(effectiveW * hrs * 30 / 1000)
-                const cost = calcMonthlyCost(kwh)
-                return (
-                  <div className="text-[9px] leading-none tabular-nums" style={{ color: "#64748B" }}>
-                    ~{kwh}kWh | {fmtRs(cost)}{L(lang, "perMonth")}
-                  </div>
-                )
-              })()}
-
-              {/* Source badge — solar or grid */}
-              {isOn && (
-                <div
-                  className="text-[9px] font-semibold leading-none"
-                  style={{ color: isSolarPowered ? "#84CC16" : "#60A5FA" }}
-                >
-                  {isSolarPowered ? L(lang, "solarBadge") : L(lang, "gridBadge")}
-                </div>
-              )}
 
               {/* Quantity stepper */}
               <div className="flex items-center gap-0.5 mt-0.5">
@@ -225,22 +161,6 @@ export function ApplianceGrid() {
             </motion.div>
           );
         })}
-      </div>
-
-      {/* Total summary row */}
-      <div
-        className="mt-2 pt-2 border-t border-surface-stroke flex flex-col gap-0.5 shrink-0"
-      >
-        <div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>
-          {L(lang, "totalCost")}
-        </div>
-        <div className="text-[10px] font-bold tabular-nums" style={{ color: "#94A3B8" }}>
-          {totalW}W
-          <span className="font-normal text-[9px]" style={{ color: "#64748B" }}>
-            {" | "}{totalKwhRounded} {L(lang, "kwhUnit")}{L(lang, "perMonth")}
-            {" | "}{fmtRs(totalCostRs)}{L(lang, "perMonth")}
-          </span>
-        </div>
       </div>
     </div>
   );
