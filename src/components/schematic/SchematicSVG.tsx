@@ -159,7 +159,7 @@ function SolarNodeControls() {
       </select>
 
       {/* Info line */}
-      <div style={{ fontSize: 9, color: solarOn ? "#F6C90E88" : "#47556977", lineHeight: 1 }}>
+      <div style={{ fontSize: 10, color: solarOn ? "#F6C90E88" : "#47556977", lineHeight: 1 }}>
         {solarOn ? `~${(panelKwp * 4.5).toFixed(0)} kWh/day` : "Disconnected"}
       </div>
     </div>
@@ -250,7 +250,7 @@ function BatteryNodeControls() {
           {batteryOn ? L(lang, "batteryOn") : L(lang, "batteryOff")}
         </span>
         {/* Backup time */}
-        <span style={{ marginLeft: "auto", fontSize: 9, color: "#64748B", fontVariantNumeric: "tabular-nums" }}>
+        <span style={{ marginLeft: "auto", fontSize: 10, color: "#64748B", fontVariantNumeric: "tabular-nums" }}>
           {L(lang, "backupIn")}: <span style={{ color: socColor, fontWeight: 700 }}>{backupDisplay}</span>
         </span>
       </div>
@@ -276,10 +276,28 @@ function BatteryNodeControls() {
           >
             {socLocked ? "🔒" : "🔓"}
           </button>
-          <span style={{ fontSize: 9, color: "#475569", marginLeft: 2 }}>
+          <span style={{ fontSize: 10, color: "#475569", marginLeft: 2 }}>
             {socLocked ? L(lang, "manual") : L(lang, "auto")}
           </span>
         </div>
+        {/* Visual gradient bar — read-only SoC display */}
+        {(() => {
+          const barColor = batterySoc > 0.6 ? '#22c55e' : batterySoc > 0.3 ? '#eab308' : '#ef4444';
+          return (
+            <div style={{
+              width: '100%',
+              height: '6px',
+              borderRadius: '3px',
+              background: `linear-gradient(to right,
+                ${barColor} 0%,
+                ${barColor} ${batterySoc * 100}%,
+                rgba(255,255,255,0.1) ${batterySoc * 100}%,
+                rgba(255,255,255,0.1) 100%)`,
+              marginBottom: '4px',
+              opacity: batteryOn && batteryKwh > 0 ? 1 : 0.4,
+            }} />
+          );
+        })()}
         <input
           type="range"
           min={0}
@@ -352,7 +370,7 @@ function GridNodeControls() {
         </span>
       </div>
       {!gridAvailable && (
-        <div style={{ fontSize: 9, color: "#EF444488", lineHeight: 1.2 }}>
+        <div style={{ fontSize: 10, color: "#EF444488", lineHeight: 1.2 }}>
           {mode === "on-grid" ? "Solar bhi band" : "Battery backup"}
         </div>
       )}
@@ -698,7 +716,7 @@ export function SchematicSVG() {
         {/* Solar → Inverter label (bezier midpoint ≈ 293,118, label ABOVE at y=104) */}
         {effectiveSolarW > 0 && !isOnGridOffline && solarOn && (
           <g className="pointer-events-none">
-            <rect x={233} y={93} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <rect x={233} y={93} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#F6C90E" strokeWidth={0.5} />
             <text x={293} y={104} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#F6C90E" fontSize="10" fontWeight="600">{Math.round(effectiveSolarW)}W</tspan>
               <tspan dx="5" fill="#6EE7B7" fontSize="9">{(effectiveSolarW / 1000).toFixed(1)}kWh</tspan>
@@ -710,7 +728,7 @@ export function SchematicSVG() {
         {/* Grid Import label */}
         {showGrid && gridImportW > 0 && gridAvailable && (
           <g className="pointer-events-none">
-            <rect x={233} y={183} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <rect x={233} y={183} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#3B82F6" strokeWidth={0.5} />
             <text x={293} y={194} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#60A5FA" fontSize="10" fontWeight="600">{Math.round(gridImportW)}W</tspan>
               <tspan dx="5" fill="#6EE7B7" fontSize="9">{(gridImportW / 1000).toFixed(1)}kWh</tspan>
@@ -722,7 +740,7 @@ export function SchematicSVG() {
         {/* Grid Export label */}
         {showGrid && gridExportW > 0 && gridAvailable && (
           <g className="pointer-events-none">
-            <rect x={233} y={183} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <rect x={233} y={183} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#A855F7" strokeWidth={0.5} />
             <text x={293} y={194} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#C084FC" fontSize="10" fontWeight="600">{Math.round(gridExportW)}W</tspan>
               <tspan dx="5" fill="#6EE7B7" fontSize="9">{(gridExportW / 1000).toFixed(1)}kWh</tspan>
@@ -734,7 +752,7 @@ export function SchematicSVG() {
         {/* Battery Charge label */}
         {showBattery && batteryChargeW > 0 && batteryOn && (
           <g className="pointer-events-none">
-            <rect x={490} y={127} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <rect x={490} y={127} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#22C55E" strokeWidth={0.5} />
             <text x={550} y={138} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#34D399" fontSize="10" fontWeight="600">{Math.round(batteryChargeW)}W</tspan>
               <tspan dx="5" fill="#6EE7B7" fontSize="9">{(batteryChargeW / 1000).toFixed(1)}kWh</tspan>
@@ -746,7 +764,7 @@ export function SchematicSVG() {
         {/* Battery Discharge label */}
         {showBattery && batteryDischargeW > 0 && batteryOn && (
           <g className="pointer-events-none">
-            <rect x={490} y={129} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <rect x={490} y={129} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#F97316" strokeWidth={0.5} />
             <text x={550} y={140} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#FB923C" fontSize="10" fontWeight="600">{Math.round(batteryDischargeW)}W</tspan>
               <tspan dx="5" fill="#6EE7B7" fontSize="9">{(batteryDischargeW / 1000).toFixed(1)}kWh</tspan>
@@ -758,7 +776,7 @@ export function SchematicSVG() {
         {/* Load (Inverter→Ghar) label */}
         {!systemOffline && loadW > 0 && !isOnGridOffline && (
           <g className="pointer-events-none">
-            <rect x={600} y={326} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <rect x={600} y={326} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#F8FAFC" strokeWidth={0.5} />
             <text x={660} y={337} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#E2E8F0" fontSize="10" fontWeight="600">{Math.round(loadW)}W</tspan>
               <tspan dx="5" fill="#6EE7B7" fontSize="9">{(loadW / 1000).toFixed(1)}kWh</tspan>
