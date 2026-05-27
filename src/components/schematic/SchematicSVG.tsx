@@ -311,17 +311,6 @@ export function SchematicSVG() {
             <feGaussianBlur stdDeviation="3" result="blur" />
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
-          {/* ── Arrowhead marker (FIX 6) ── */}
-          <marker
-            id="arrowhead"
-            markerWidth="6"
-            markerHeight="6"
-            refX="3"
-            refY="3"
-            orient="auto"
-          >
-            <path d="M 0 0 L 6 3 L 0 6 z" fill="currentColor" opacity="0.7" />
-          </marker>
         </defs>
         <rect width="1000" height="370" fill="url(#grid-bg)" opacity="0.5" />
 

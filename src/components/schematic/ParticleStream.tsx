@@ -31,23 +31,31 @@ export function ParticleStream({ pathD, powerW = 0, flowType, isActive }: Partic
   const radius = clamp(2 + safePowerW / 3000, 2, 4);
   const safeRadius = Number.isFinite(radius) ? radius : 2;
 
+  // Arrow size scales with particle radius: wider = more prominent
+  const arrowW = safeRadius * 2.5;   // tip-to-base length (forward direction)
+  const arrowH = safeRadius * 1.8;   // half-height of base
+
   return (
     <>
       {Array.from({ length: PARTICLE_COUNT }).map((_, i) => (
-        <circle
+        // Filled triangle pointing right (+x). CSS offset-rotate:auto rotates it
+        // to match the path tangent direction at each offset-distance position.
+        // Triangle: tip at (arrowW, 0), base corners at (0, ±arrowH).
+        <path
           key={i}
-          r={safeRadius}
+          d={`M ${arrowW} 0 L 0 ${-arrowH} L 0 ${arrowH} Z`}
           fill={color}
           opacity={isActive ? 0.9 : 0}
           style={{
             offsetPath: `path("${pathD}")`,
             offsetDistance: "0%",
+            offsetRotate: "auto",
             animationName: isActive ? "flowParticle" : "none",
             animationDuration: `${durationMs}ms`,
             animationTimingFunction: "linear",
             animationIterationCount: "infinite",
             animationDelay: `${(i / PARTICLE_COUNT) * durationMs}ms`,
-          }}
+          } as React.CSSProperties}
         />
       ))}
     </>
