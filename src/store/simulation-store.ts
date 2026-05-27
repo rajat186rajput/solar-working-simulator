@@ -40,7 +40,7 @@ function computeState(state: Partial<SimState> & { socLocked?: boolean }): Parti
   const batteryKwh = state.batteryKwh ?? 5;
   const batteryType = state.batteryType ?? "lifepo4";
   const batteryOn = state.batteryOn ?? true;
-  const panelKwp = state.panelKwp ?? 4.4;
+  const panelKwp = state.panelKwp ?? 5;
   const solarOn = state.solarOn ?? true;
   const inverterWatts = state.inverterWatts ?? 6200;
   const applianceQtys = state.applianceQtys ?? DEFAULT_APPLIANCE_QTYS;
@@ -101,7 +101,7 @@ const INITIAL_STATE: SimState & { socLocked: boolean } = {
   batteryKwh: 5,
   batteryType: "lifepo4",
   batteryOn: true,
-  panelKwp: 4.4,
+  panelKwp: 5,
   solarOn: true,
   inverterWatts: 6200,
   appliancesOn: [...DEFAULT_APPLIANCES_ON],
@@ -109,7 +109,7 @@ const INITIAL_STATE: SimState & { socLocked: boolean } = {
   gridOnlyAppliances: new Set<string>(),
   socLocked: true,
 
-  solarW: getSolarW(14, "clear", 4.4),
+  solarW: getSolarW(14, "clear", 5),
   loadW: calcTotalLoadQty(DEFAULT_APPLIANCE_QTYS),
   gridImportW: 0,
   gridExportW: 0,
