@@ -30,7 +30,23 @@ const HEAVY_APPLIANCE_IDS = new Set(
 );
 
 export function ApplianceGrid() {
-  const { applianceQtys, gridOnlyAppliances, toggleAppliance, setApplianceQty, toggleGridOnly } = useSimStore();
+  const { applianceQtys, gridOnlyAppliances, toggleAppliance, setApplianceQty, toggleGridOnly, solarW } = useSimStore();
+
+  // Compute per-appliance solar coverage: cumulative watts in APPLIANCES order
+  // Appliances covered within solarW budget get ☀️ Solar badge, rest get ⚡ Grid
+  let cumulativeW = 0;
+  const solarCoveredIds = new Set<string>();
+  for (const appliance of APPLIANCES) {
+    const entry = applianceQtys.find((e) => e.id === appliance.id);
+    const isOn = entry?.isOn ?? false;
+    const qty = entry?.qty ?? 1;
+    if (!isOn) continue;
+    const appW = qty * appliance.watts;
+    if (cumulativeW + appW <= solarW) {
+      solarCoveredIds.add(appliance.id);
+    }
+    cumulativeW += appW;
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -47,6 +63,7 @@ export function ApplianceGrid() {
           const effectiveW = isOn ? qty * appliance.watts : 0;
           const isHeavy = HEAVY_APPLIANCE_IDS.has(appliance.id);
           const isGridOnly = gridOnlyAppliances.has(appliance.id);
+          const isSolarPowered = isOn && solarCoveredIds.has(appliance.id);
 
           return (
             <motion.div
@@ -106,6 +123,16 @@ export function ApplianceGrid() {
               >
                 {isOn ? `${effectiveW}W` : "—"}
               </div>
+
+              {/* Source badge — solar or grid */}
+              {isOn && (
+                <div
+                  className="text-[9px] font-semibold leading-none"
+                  style={{ color: isSolarPowered ? "#84CC16" : "#60A5FA" }}
+                >
+                  {isSolarPowered ? "☀️ Solar" : "⚡ Grid"}
+                </div>
+              )}
 
               {/* Quantity stepper */}
               <div className="flex items-center gap-0.5 mt-0.5">

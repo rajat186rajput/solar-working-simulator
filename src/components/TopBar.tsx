@@ -4,7 +4,6 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Undo2, HelpCircle } from "lucide-react";
 import { useSimStore } from "@/store/simulation-store";
-import { formatWh } from "@/lib/utils";
 
 function LogoMark() {
   return (
@@ -41,81 +40,19 @@ function LogoMark() {
   );
 }
 
-// ─── Mini-stat tile (read-only display) ────────────────────────────────────
-interface MiniStatProps {
-  icon: string;
-  label: string;
-  value: string;
-  valueColor?: string;
-  barFill?: number;   // 0–1, optional inline bar
-  barColor?: string;
-}
-
-function MiniStat({ icon, label, value, valueColor = "#F1F5F9", barFill, barColor }: MiniStatProps) {
-  return (
-    <div className="flex flex-col items-start gap-0 flex-shrink-0 px-3 first:pl-0">
-      <div className="flex items-center gap-1">
-        <span className="text-[11px] leading-none flex-shrink-0">{icon}</span>
-        <span className="text-[9px] text-text-muted uppercase tracking-wide leading-none whitespace-nowrap">{label}</span>
-      </div>
-      <div className="flex items-center gap-1.5 mt-0.5">
-        <span
-          className="text-sm font-bold tabular-nums leading-none whitespace-nowrap"
-          style={{ color: valueColor }}
-        >
-          {value}
-        </span>
-        {/* Inline bar for battery */}
-        {barFill !== undefined && (
-          <div className="w-12 h-1.5 bg-surface-dark rounded-full overflow-hidden shrink-0">
-            <motion.div
-              className="h-full rounded-full"
-              style={{ backgroundColor: barColor ?? "#22C55E" }}
-              animate={{ width: `${Math.max(0, Math.min(1, barFill)) * 100}%` }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Vertical divider ──────────────────────────────────────────────────────
-function Divider() {
-  return <div className="w-px self-stretch bg-surface-stroke mx-1 shrink-0" />;
-}
-
 export function TopBar() {
   const {
     resetToDefault,
     systemOffline,
     inverterOverload,
     systemStatus,
-    solarW,
-    loadW,
-    batterySoc,
-    batteryOn,
-    batteryKwh,
-    gridAvailable,
-    netMeterWh,
-    mode,
   } = useSimStore();
 
   const hasAlert = systemOffline || inverterOverload;
 
-  const showBattery = mode === "off-grid" || mode === "hybrid";
-  const showGrid = mode === "on-grid" || mode === "hybrid";
-
-  const socColor =
-    batterySoc >= 0.8 ? "#22C55E"
-    : batterySoc >= 0.4 ? "#EAB308"
-    : batterySoc >= 0.2 ? "#F97316"
-    : "#EF4444";
-
   return (
     <header className="flex flex-col border-b border-surface-stroke bg-surface-dark/95 backdrop-blur-md shrink-0">
-      {/* ── ROW 1: Logo | (mode now in sidebar) | Reset + Help ── */}
+      {/* ── ROW 1: Logo | Reset + Help ── */}
       <div className="flex items-center justify-between px-3 sm:px-4 h-14 gap-2">
         {/* Left — logo */}
         <div className="flex items-center gap-3 min-w-0">
@@ -159,85 +96,6 @@ export function TopBar() {
             <HelpCircle size={15} />
           </Link>
         </div>
-      </div>
-
-      {/* ── ROW 2: Live stat strip (5 stats — Backup removed) ~50px ── */}
-      <div className="flex items-center px-3 sm:px-4 h-[50px] gap-0 border-t border-surface-stroke/50 bg-surface-card/20 overflow-x-auto">
-        {/* 1 — Solar W */}
-        <MiniStat
-          icon="☀️"
-          label="Solar"
-          value={`${Math.round(solarW)} W`}
-          valueColor="#F6C90E"
-        />
-        <Divider />
-
-        {/* 2 — Load W */}
-        <MiniStat
-          icon="⚡"
-          label="Load"
-          value={`${Math.round(loadW)} W`}
-          valueColor={loadW > 6200 ? "#EF4444" : "#F97316"}
-        />
-        <Divider />
-
-        {/* 3 — Battery % + bar */}
-        {showBattery ? (
-          <>
-            <MiniStat
-              icon="🔋"
-              label="Battery"
-              value={batteryOn && batteryKwh > 0 ? `${Math.round(batterySoc * 100)}%` : "—"}
-              valueColor={batteryOn && batteryKwh > 0 ? socColor : "#475569"}
-              barFill={batteryOn && batteryKwh > 0 ? batterySoc : 0}
-              barColor={socColor}
-            />
-            <Divider />
-          </>
-        ) : (
-          <>
-            <MiniStat
-              icon="🔋"
-              label="Battery"
-              value="N/A"
-              valueColor="#475569"
-            />
-            <Divider />
-          </>
-        )}
-
-        {/* 4 — Grid status */}
-        {showGrid ? (
-          <>
-            <MiniStat
-              icon={gridAvailable ? "🔌" : "❌"}
-              label="Grid"
-              value={gridAvailable ? "OK" : "OFF"}
-              valueColor={gridAvailable ? "#3B82F6" : "#EF4444"}
-            />
-            <Divider />
-          </>
-        ) : (
-          <>
-            <MiniStat
-              icon="🔌"
-              label="Grid"
-              value="Off-Grid"
-              valueColor="#475569"
-            />
-            <Divider />
-          </>
-        )}
-
-        {/* 5 — Net Meter Wh today */}
-        <MiniStat
-          icon="📊"
-          label="Net Meter"
-          value={formatWh(netMeterWh)}
-          valueColor={netMeterWh >= 0 ? "#22C55E" : "#EF4444"}
-        />
-
-        {/* Backup chip REMOVED (FIX 7) */}
       </div>
     </header>
   );
