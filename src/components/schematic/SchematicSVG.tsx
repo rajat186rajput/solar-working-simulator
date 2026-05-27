@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useState, useCallback } from "react";
+import { useCallback } from "react";
 import { useSimStore } from "@/store/simulation-store";
 import { calcBackupHours } from "@/lib/simulation";
 import { PowerFlowLine } from "./PowerFlowLine";
@@ -358,16 +358,82 @@ function GridNodeControls() {
 }
 
 // ─── Ghar Drawer — right-side slide-in panel with appliance controls ─────────
+// When isPinned=true: no backdrop, no slide animation (renders as docked aside in page.tsx)
+// When isPinned=false: floats over diagram with backdrop + spring slide animation
+export function GharDrawerContents({
+  onClose,
+  isPinned,
+  onPinToggle,
+}: {
+  onClose: () => void;
+  isPinned: boolean;
+  onPinToggle: () => void;
+}) {
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-4 py-3 border-b border-surface-stroke shrink-0"
+        style={{ background: "#1E293B" }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-base">🏠</span>
+          <span className="text-sm font-semibold text-text-primary">Ghar Load</span>
+        </div>
+        <div className="flex items-center gap-1">
+          {/* Pin / unpin button */}
+          <button
+            onClick={onPinToggle}
+            aria-label={isPinned ? "Unpin drawer" : "Pin drawer to side"}
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 16,
+              lineHeight: 1,
+              padding: "4px",
+              color: isPinned ? "#FACC15" : "#94A3B8",
+              transition: "color 0.15s ease",
+            }}
+          >
+            {isPinned ? "📍" : "📌"}
+          </button>
+          {/* Close button */}
+          <button
+            onClick={onClose}
+            className="flex items-center justify-center w-7 h-7 rounded-full text-text-secondary hover:text-text-primary hover:bg-surface-stroke transition-colors text-base font-bold"
+            aria-label="Close appliance panel"
+          >
+            ×
+          </button>
+        </div>
+      </div>
+
+      {/* Body — scrollable appliance grid */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 scrollbar-thin">
+        <ApplianceGrid />
+      </div>
+    </div>
+  );
+}
+
 function GharDrawer({
   open,
   onClose,
+  isPinned,
+  onPinToggle,
 }: {
   open: boolean;
   onClose: () => void;
+  isPinned: boolean;
+  onPinToggle: () => void;
 }) {
+  // When pinned, this floating drawer is not rendered — page.tsx renders the docked aside instead
+  if (isPinned) return null;
+
   return (
     <>
-      {/* Backdrop — click outside to close */}
+      {/* Backdrop — click outside to close (float mode only) */}
       <AnimatePresence>
         {open && (
           <motion.div
@@ -384,12 +450,12 @@ function GharDrawer({
         )}
       </AnimatePresence>
 
-      {/* Drawer panel */}
+      {/* Drawer panel — spring slide from right */}
       <AnimatePresence>
         {open && (
           <motion.div
             key="ghar-drawer"
-            className="absolute top-0 right-0 h-full z-50 flex flex-col"
+            className="absolute top-0 right-0 h-full z-50"
             style={{
               width: 320,
               background: "#0F172A",
@@ -401,28 +467,11 @@ function GharDrawer({
             exit={{ x: 320 }}
             transition={{ type: "spring", stiffness: 320, damping: 32 }}
           >
-            {/* Header */}
-            <div
-              className="flex items-center justify-between px-4 py-3 border-b border-surface-stroke shrink-0"
-              style={{ background: "#1E293B" }}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-base">🏠</span>
-                <span className="text-sm font-semibold text-text-primary">Ghar Load</span>
-              </div>
-              <button
-                onClick={onClose}
-                className="flex items-center justify-center w-7 h-7 rounded-full text-text-secondary hover:text-text-primary hover:bg-surface-stroke transition-colors text-base font-bold"
-                aria-label="Close appliance panel"
-              >
-                ×
-              </button>
-            </div>
-
-            {/* Body — scrollable appliance grid */}
-            <div className="flex-1 min-h-0 overflow-y-auto p-3 scrollbar-thin">
-              <ApplianceGrid />
-            </div>
+            <GharDrawerContents
+              onClose={onClose}
+              isPinned={isPinned}
+              onPinToggle={onPinToggle}
+            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -431,10 +480,6 @@ function GharDrawer({
 }
 
 export function SchematicSVG() {
-  const [gharDrawerOpen, setGharDrawerOpen] = useState(false);
-  const openGharDrawer  = useCallback(() => setGharDrawerOpen(true),  []);
-  const closeGharDrawer = useCallback(() => setGharDrawerOpen(false), []);
-
   const {
     mode,
     solarW,
@@ -449,7 +494,15 @@ export function SchematicSVG() {
     inverterOverload,
     solarOn,
     batteryOn,
+    gharDrawerOpen,
+    gharDrawerPinned,
+    setGharDrawerOpen,
+    setGharDrawerPinned,
   } = useSimStore();
+
+  const openGharDrawer  = useCallback(() => setGharDrawerOpen(true),  [setGharDrawerOpen]);
+  const closeGharDrawer = useCallback(() => setGharDrawerOpen(false), [setGharDrawerOpen]);
+  const togglePin       = useCallback(() => setGharDrawerPinned(!gharDrawerPinned), [gharDrawerPinned, setGharDrawerPinned]);
 
   const showBattery = mode === "off-grid" || mode === "hybrid";
   const showGrid    = mode === "on-grid"  || mode === "hybrid";
@@ -833,8 +886,13 @@ export function SchematicSVG() {
         {mode.toUpperCase()} MODE
       </div>
 
-      {/* Ghar Appliance Drawer — slides in from right when Ghar node clicked */}
-      <GharDrawer open={gharDrawerOpen} onClose={closeGharDrawer} />
+      {/* Ghar Appliance Drawer — float mode only (pinned mode renders in page.tsx as docked aside) */}
+      <GharDrawer
+        open={gharDrawerOpen}
+        onClose={closeGharDrawer}
+        isPinned={gharDrawerPinned}
+        onPinToggle={togglePin}
+      />
     </div>
   );
 }
