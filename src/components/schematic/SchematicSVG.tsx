@@ -9,6 +9,7 @@ import { ParticleStream } from "./ParticleStream";
 import { ComponentNode } from "./ComponentNode";
 import { ApplianceGrid } from "@/components/controls/ApplianceGrid";
 import { L } from "@/lib/i18n";
+import { fmtRs } from "@/lib/tariff";
 
 // ─── Layout (viewBox 0 0 1000 370) — pure LEFT-TO-RIGHT pipeline ──────────────
 //
@@ -861,9 +862,21 @@ export function SchematicSVG() {
             isActive={!systemOffline}
             tooltip="Tap to manage appliances"
           />
+          {/* Per-hour kWh and cost line — below watt value, above tap hint */}
+          <text
+            x={890} y={178}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#64748B"
+            fontSize="9"
+            fontFamily="Inter, sans-serif"
+            className="pointer-events-none select-none"
+          >
+            {`~${(loadW / 1000).toFixed(2)}kWh | ${fmtRs((loadW / 1000) * 6.50)}${L(lang, "perHour")}`}
+          </text>
           {/* Tap hint — below node */}
           <text
-            x={890} y={192}
+            x={890} y={193}
             textAnchor="middle"
             dominantBaseline="middle"
             fill="#475569"

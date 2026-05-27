@@ -41,6 +41,11 @@ export const LABELS = {
   // Source badges
   solarBadge: { en: "☀️ Solar", hi: "☀️ सोलर" },
   gridBadge:  { en: "⚡ Grid",  hi: "⚡ ग्रिड" },
+  // Cost / energy labels
+  perHour:   { en: "/hr",   hi: "/घंटा" },
+  perMonth:  { en: "/mo",   hi: "/माह" },
+  kwhUnit:   { en: "kWh",   hi: "kWh" },
+  totalCost: { en: "Total", hi: "कुल" },
   // Misc
   reset:    { en: "Reset",  hi: "रीसेट" },
   help:     { en: "Help",   hi: "सहायता" },

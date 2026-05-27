@@ -5,6 +5,7 @@ import { Switch } from "@/components/ui/switch";
 import { APPLIANCES, CATEGORY_COLORS } from "@/lib/appliances";
 import { useSimStore } from "@/store/simulation-store";
 import { L } from "@/lib/i18n";
+import { calcMonthlyCost, fmtRs, parseHours } from "@/lib/tariff";
 import {
   Wind, Lightbulb, Refrigerator, Tv, Droplets,
   Flame, WashingMachine, Microwave, Shirt, Blender, Car, Zap,
@@ -49,13 +50,28 @@ export function ApplianceGrid() {
     cumulativeW += appW;
   }
 
+  // Total across all ON appliances — for summary row
+  let totalW = 0;
+  let totalKwh = 0;
+  for (const appliance of APPLIANCES) {
+    const entry = applianceQtys.find((e) => e.id === appliance.id);
+    if (!entry?.isOn) continue;
+    const qty = entry.qty ?? 1;
+    const effectiveW = qty * appliance.watts;
+    totalW += effectiveW;
+    const hrs = parseHours(appliance.typicalHoursPerDay)
+    totalKwh += effectiveW * hrs * 30 / 1000
+  }
+  const totalKwhRounded = Math.round(totalKwh)
+  const totalCostRs = calcMonthlyCost(totalKwhRounded)
+
   return (
     <div className="flex flex-col h-full">
       <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">
         Appliances
       </div>
-      {/* 3-column grid, all 12 appliances */}
-      <div className="grid grid-cols-3 gap-1 flex-1 content-start">
+      {/* 3-column grid — all appliances */}
+      <div className="grid grid-cols-3 gap-1 content-start">
         {APPLIANCES.map((appliance) => {
           const entry = applianceQtys.find((e) => e.id === appliance.id);
           const isOn = entry?.isOn ?? false;
@@ -124,6 +140,18 @@ export function ApplianceGrid() {
               >
                 {isOn ? `${effectiveW}W` : "—"}
               </div>
+
+              {/* kWh / ₹ cost display — ON appliances only */}
+              {isOn && (() => {
+                const hrs = parseHours(appliance.typicalHoursPerDay)
+                const kwh = Math.round(effectiveW * hrs * 30 / 1000)
+                const cost = calcMonthlyCost(kwh)
+                return (
+                  <div className="text-[9px] leading-none tabular-nums" style={{ color: "#64748B" }}>
+                    ~{kwh}kWh | {fmtRs(cost)}{L(lang, "perMonth")}
+                  </div>
+                )
+              })()}
 
               {/* Source badge — solar or grid */}
               {isOn && (
@@ -197,6 +225,22 @@ export function ApplianceGrid() {
             </motion.div>
           );
         })}
+      </div>
+
+      {/* Total summary row */}
+      <div
+        className="mt-2 pt-2 border-t border-surface-stroke flex flex-col gap-0.5 shrink-0"
+      >
+        <div className="text-[9px] font-semibold uppercase tracking-wider" style={{ color: "#475569" }}>
+          {L(lang, "totalCost")}
+        </div>
+        <div className="text-[10px] font-bold tabular-nums" style={{ color: "#94A3B8" }}>
+          {totalW}W
+          <span className="font-normal text-[9px]" style={{ color: "#64748B" }}>
+            {" | "}{totalKwhRounded} {L(lang, "kwhUnit")}{L(lang, "perMonth")}
+            {" | "}{fmtRs(totalCostRs)}{L(lang, "perMonth")}
+          </span>
+        </div>
       </div>
     </div>
   );
