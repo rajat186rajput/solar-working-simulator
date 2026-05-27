@@ -652,95 +652,95 @@ export function SchematicSVG() {
           isActive={!systemOffline && loadW > 0}
         />
 
-        {/* ── FLOW WATT LABELS ── */}
+        {/* ── FLOW WATT LABELS (W • kWh • ₹/hr) ── */}
 
-        {/* Solar → Inverter label (bezier midpoint ≈ 293,118, offset y-12) */}
+        {/* Solar → Inverter label (bezier midpoint ≈ 293,118, label ABOVE at y=104) */}
         {effectiveSolarW > 0 && !isOnGridOffline && solarOn && (
           <text
-            x={293} y={106}
+            x={293} y={104}
             textAnchor="middle"
             dominantBaseline="middle"
-            fill="#94A3B8"
-            fontSize="10"
             fontFamily="Inter, sans-serif"
             className="pointer-events-none"
           >
-            {`${Math.round(effectiveSolarW)} W`}
+            <tspan fill="#94A3B8" fontSize="10">{Math.round(effectiveSolarW)}W</tspan>
+            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(effectiveSolarW / 1000).toFixed(1)}kWh</tspan>
+            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(effectiveSolarW / 1000 * 6.5)}/hr</tspan>
           </text>
         )}
 
-        {/* Grid Import label (bezier midpoint ≈ 293,208, offset y-12) */}
+        {/* Grid Import label (bezier midpoint ≈ 293,208, label ABOVE at y=194) */}
         {showGrid && gridImportW > 0 && gridAvailable && (
           <text
-            x={293} y={196}
+            x={293} y={194}
             textAnchor="middle"
             dominantBaseline="middle"
-            fill="#94A3B8"
-            fontSize="10"
             fontFamily="Inter, sans-serif"
             className="pointer-events-none"
           >
-            {`${Math.round(gridImportW)} W`}
+            <tspan fill="#94A3B8" fontSize="10">{Math.round(gridImportW)}W</tspan>
+            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(gridImportW / 1000).toFixed(1)}kWh</tspan>
+            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(gridImportW / 1000 * 6.5)}/hr</tspan>
           </text>
         )}
 
-        {/* Grid Export label (bezier midpoint ≈ 293,210, offset y+14) */}
+        {/* Grid Export label (bezier midpoint ≈ 293,208, label ABOVE at y=194 — mutually exclusive with import) */}
         {showGrid && gridExportW > 0 && gridAvailable && (
           <text
-            x={293} y={224}
+            x={293} y={194}
             textAnchor="middle"
             dominantBaseline="middle"
-            fill="#94A3B8"
-            fontSize="10"
             fontFamily="Inter, sans-serif"
             className="pointer-events-none"
           >
-            {`${Math.round(gridExportW)} W`}
+            <tspan fill="#94A3B8" fontSize="10">{Math.round(gridExportW)}W</tspan>
+            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(gridExportW / 1000).toFixed(1)}kWh</tspan>
+            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(gridExportW / 1000 * 6.5)}/hr</tspan>
           </text>
         )}
 
-        {/* Battery Charge label (horizontal midpoint 550,150, offset y-12) */}
+        {/* Battery Charge label (horizontal path y=150, label ABOVE at y=138) */}
         {showBattery && batteryChargeW > 0 && batteryOn && (
           <text
             x={550} y={138}
             textAnchor="middle"
             dominantBaseline="middle"
-            fill="#94A3B8"
-            fontSize="10"
             fontFamily="Inter, sans-serif"
             className="pointer-events-none"
           >
-            {`${Math.round(batteryChargeW)} W`}
+            <tspan fill="#94A3B8" fontSize="10">{Math.round(batteryChargeW)}W</tspan>
+            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(batteryChargeW / 1000).toFixed(1)}kWh</tspan>
+            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(batteryChargeW / 1000 * 6.5)}/hr</tspan>
           </text>
         )}
 
-        {/* Battery Discharge label (horizontal midpoint 550,154, offset y+14) */}
+        {/* Battery Discharge label (horizontal path y=154, label ABOVE at y=140 — mutually exclusive with charge) */}
         {showBattery && batteryDischargeW > 0 && batteryOn && (
           <text
-            x={550} y={168}
+            x={550} y={140}
             textAnchor="middle"
             dominantBaseline="middle"
-            fill="#94A3B8"
-            fontSize="10"
             fontFamily="Inter, sans-serif"
             className="pointer-events-none"
           >
-            {`${Math.round(batteryDischargeW)} W`}
+            <tspan fill="#94A3B8" fontSize="10">{Math.round(batteryDischargeW)}W</tspan>
+            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(batteryDischargeW / 1000).toFixed(1)}kWh</tspan>
+            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(batteryDischargeW / 1000 * 6.5)}/hr</tspan>
           </text>
         )}
 
-        {/* Load (Inverter→Ghar) label (bottom bypass mid 660,350, offset y-12) */}
+        {/* Load (Inverter→Ghar) label (bottom bypass path y=350, label ABOVE at y=337) */}
         {!systemOffline && loadW > 0 && !isOnGridOffline && (
           <text
-            x={660} y={338}
+            x={660} y={337}
             textAnchor="middle"
             dominantBaseline="middle"
-            fill="#94A3B8"
-            fontSize="10"
             fontFamily="Inter, sans-serif"
             className="pointer-events-none"
           >
-            {`${Math.round(loadW)} W`}
+            <tspan fill="#94A3B8" fontSize="10">{Math.round(loadW)}W</tspan>
+            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(loadW / 1000).toFixed(1)}kWh</tspan>
+            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(loadW / 1000 * 6.5)}/hr</tspan>
           </text>
         )}
 
