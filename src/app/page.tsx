@@ -1,7 +1,5 @@
 import dynamic from "next/dynamic";
 import { TopBar } from "@/components/TopBar";
-import { ApplianceGrid } from "@/components/controls/ApplianceGrid";
-import { ControlsPanel } from "@/components/controls/ControlsPanel";
 import { TopStrip } from "@/components/TopStrip";
 import { ModeSidebar } from "@/components/ModeSidebar";
 
@@ -21,69 +19,29 @@ export default function Home() {
       {/* Mode sidebar — fixed overlay, slides from left */}
       <ModeSidebar />
 
-      {/* TOP BAR — 2 rows (~h-14 + h-[50px] = ~h-[110px]) */}
+      {/* TOP BAR */}
       <TopBar />
 
       {/*
         MAIN BODY — fills remaining height
-        Vertical stack: TopStrip + SVG diagram (40vh) on top, controls on bottom
+        Vertical stack: TopStrip + full-page SVG diagram
       */}
       <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
 
         {/* ── TOP STRIP — Time slider + Weather buttons ── */}
         <TopStrip />
 
-        {/* ── TOP 40vh — Schematic SVG (full width) ── */}
-        <section
-          className="
-            w-full
-            shrink-0
-            border-b border-surface-stroke
-            bg-surface-card/20
-            overflow-hidden
-            p-2
-          "
-          style={{ height: "40vh", minHeight: 200 }}
-        >
-          <SchematicSVG />
-        </section>
-
-        {/* ── BOTTOM — Appliances (left/center) + Controls (right), full width, scrollable ── */}
+        {/* ── SVG Diagram — fills all remaining space ── */}
         <section
           className="
             flex-1
-            flex flex-col lg:flex-row
+            w-full
             min-h-0
             overflow-hidden
+            bg-surface-card/20
           "
         >
-          {/* Appliances — takes most of the width */}
-          <div
-            className="
-              flex-1
-              p-3
-              min-h-0
-              overflow-y-auto
-              scrollbar-thin
-              border-b lg:border-b-0 lg:border-r border-surface-stroke
-            "
-          >
-            <ApplianceGrid />
-          </div>
-
-          {/* Controls (time slider, day type) — fixed width on desktop, full width on mobile */}
-          <div
-            className="
-              w-full lg:w-72 xl:w-80
-              shrink-0
-              p-3
-              min-h-0
-              overflow-y-auto
-              scrollbar-thin
-            "
-          >
-            <ControlsPanel />
-          </div>
+          <SchematicSVG />
         </section>
 
       </main>

@@ -1,11 +1,13 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
+import { useState, useCallback } from "react";
 import { useSimStore } from "@/store/simulation-store";
 import { calcBackupHours } from "@/lib/simulation";
 import { PowerFlowLine } from "./PowerFlowLine";
 import { ParticleStream } from "./ParticleStream";
 import { ComponentNode } from "./ComponentNode";
+import { ApplianceGrid } from "@/components/controls/ApplianceGrid";
 
 // ─── Layout (viewBox 0 0 1000 370) — pure LEFT-TO-RIGHT pipeline ──────────────
 //
@@ -355,7 +357,84 @@ function GridNodeControls() {
   );
 }
 
+// ─── Ghar Drawer — right-side slide-in panel with appliance controls ─────────
+function GharDrawer({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      {/* Backdrop — click outside to close */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            key="ghar-backdrop"
+            className="absolute inset-0 z-40"
+            style={{ background: "rgba(0,0,0,0.45)" }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={onClose}
+            aria-hidden="true"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Drawer panel */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            key="ghar-drawer"
+            className="absolute top-0 right-0 h-full z-50 flex flex-col"
+            style={{
+              width: 320,
+              background: "#0F172A",
+              borderLeft: "1px solid #334155",
+              boxShadow: "-8px 0 32px rgba(0,0,0,0.6)",
+            }}
+            initial={{ x: 320 }}
+            animate={{ x: 0 }}
+            exit={{ x: 320 }}
+            transition={{ type: "spring", stiffness: 320, damping: 32 }}
+          >
+            {/* Header */}
+            <div
+              className="flex items-center justify-between px-4 py-3 border-b border-surface-stroke shrink-0"
+              style={{ background: "#1E293B" }}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-base">🏠</span>
+                <span className="text-sm font-semibold text-text-primary">Ghar Load</span>
+              </div>
+              <button
+                onClick={onClose}
+                className="flex items-center justify-center w-7 h-7 rounded-full text-text-secondary hover:text-text-primary hover:bg-surface-stroke transition-colors text-base font-bold"
+                aria-label="Close appliance panel"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Body — scrollable appliance grid */}
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 scrollbar-thin">
+              <ApplianceGrid />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
 export function SchematicSVG() {
+  const [gharDrawerOpen, setGharDrawerOpen] = useState(false);
+  const openGharDrawer  = useCallback(() => setGharDrawerOpen(true),  []);
+  const closeGharDrawer = useCallback(() => setGharDrawerOpen(false), []);
+
   const {
     mode,
     solarW,
@@ -700,11 +779,15 @@ export function SchematicSVG() {
           )}
         </AnimatePresence>
 
-        {/* COL-4 RIGHT: Ghar (Load) — cx=890, cy=150, no controls */}
+        {/* COL-4 RIGHT: Ghar (Load) — cx=890, cy=150, clickable → opens appliance drawer */}
         <motion.g
           initial={{ opacity: 0, scale: 0.7, x: 20 }}
           animate={{ opacity: 1, scale: 1, x: 0 }}
           transition={{ delay: 0.4, duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+          onClick={openGharDrawer}
+          style={{ cursor: "pointer" }}
+          role="button"
+          aria-label="Open appliance panel"
         >
           <ComponentNode
             cx={890} cy={150}
@@ -713,8 +796,20 @@ export function SchematicSVG() {
             iconType="house"
             glowColor="#F1F5F9"
             isActive={!systemOffline}
-            tooltip="Total home consumption across all appliances."
+            tooltip="Tap to manage appliances"
           />
+          {/* Tap hint — below node */}
+          <text
+            x={890} y={192}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill="#475569"
+            fontSize="9"
+            fontFamily="Inter, sans-serif"
+            className="pointer-events-none select-none"
+          >
+            ☰ Appliances
+          </text>
         </motion.g>
 
         {/* On-Grid grid-fail blackout overlay */}
@@ -737,6 +832,9 @@ export function SchematicSVG() {
       >
         {mode.toUpperCase()} MODE
       </div>
+
+      {/* Ghar Appliance Drawer — slides in from right when Ghar node clicked */}
+      <GharDrawer open={gharDrawerOpen} onClose={closeGharDrawer} />
     </div>
   );
 }
