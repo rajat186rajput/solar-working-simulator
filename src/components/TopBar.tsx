@@ -80,37 +80,148 @@ export function TopBar() {
 
   return (
     <header
-      className="flex items-center shrink-0 px-3 sm:px-4 h-14 gap-2 sm:gap-3 backdrop-blur-md overflow-x-auto"
+      className="flex flex-col md:flex-row shrink-0"
       style={{
         background: "linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(30,41,59,0.97) 100%)",
         borderBottom: "1px solid transparent",
         borderImage: "linear-gradient(90deg, transparent 0%, #3B82F6 30%, #F59E0B 70%, transparent 100%) 1",
       }}
     >
+      {/* ── ROW 1: Logo + alert badge (left) + Lang toggle + Reset + Help (right) ── */}
+      <div className="flex items-center h-10 px-3 sm:px-4 gap-2 backdrop-blur-md">
+        {/* Logo */}
+        <div className="flex items-center gap-2 shrink-0">
+          <LogoMark />
+          <AnimatePresence>
+            {hasAlert && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.8 }}
+                className="hidden lg:block px-2 py-0.5 rounded-full bg-danger/20 border border-danger/40 text-danger text-[10px] font-semibold truncate max-w-[140px]"
+                title={systemStatus}
+              >
+                {systemStatus}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
-      {/* ── LEFT: Logo + optional alert badge ── */}
-      <div className="flex items-center gap-2 shrink-0">
-        <LogoMark />
-        <AnimatePresence>
-          {hasAlert && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              className="hidden lg:block px-2 py-0.5 rounded-full bg-danger/20 border border-danger/40 text-danger text-[10px] font-semibold truncate max-w-[140px]"
-              title={systemStatus}
+        {/* Spacer — pushes controls to right on row 1 */}
+        <div className="flex-1 md:hidden" />
+
+        {/* On desktop row 1 merges with row 2 via flex-row — divider shown md+ */}
+        <div className="w-px self-stretch bg-surface-stroke shrink-0 hidden md:block" />
+
+        {/* Right controls — always visible in row 1 on mobile, part of single row on desktop */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto md:ml-0">
+          {/* Divider before weather — only desktop (md+) */}
+          <div className="w-px self-stretch bg-surface-stroke mx-0.5 hidden md:block" />
+
+          {/* Weather buttons — desktop only (shown in row 2 on mobile) */}
+          <div className="hidden md:flex items-center gap-1">
+            {DAY_TYPES.map((dt) => (
+              <button
+                key={dt.value}
+                onClick={() => setDayType(dt.value)}
+                className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-medium border transition-all ${
+                  dayType === dt.value
+                    ? "border-solar bg-solar/10 text-solar"
+                    : "border-surface-stroke text-text-muted hover:border-surface-stroke/80"
+                }`}
+                style={dayType === dt.value ? { boxShadow: "0 0 10px rgba(246,201,14,0.40)" } : undefined}
+                aria-pressed={dayType === dt.value}
+                aria-label={`Set weather to ${L(lang, dt.key)}`}
+              >
+                <span>{dt.icon}</span>
+                <span className="hidden lg:inline">{L(lang, dt.key)}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Divider before lang */}
+          <div className="w-px self-stretch bg-surface-stroke mx-0.5" />
+
+          {/* Language toggle pill */}
+          <div
+            className="flex items-center gap-0.5 bg-surface-card rounded-lg p-0.5 border border-surface-stroke"
+            aria-label="Language toggle"
+          >
+            <button
+              onClick={() => setLang("en")}
+              className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                lang === "en"
+                  ? "bg-solar text-black font-semibold"
+                  : "text-text-muted hover:text-text-primary"
+              }`}
+              aria-pressed={lang === "en"}
+              aria-label="Switch to English"
             >
-              {systemStatus}
-            </motion.div>
-          )}
-        </AnimatePresence>
+              EN
+            </button>
+            <button
+              onClick={() => setLang("hi")}
+              className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                lang === "hi"
+                  ? "bg-solar text-black font-semibold"
+                  : "text-text-muted hover:text-text-primary"
+              }`}
+              aria-pressed={lang === "hi"}
+              aria-label="Switch to Hindi"
+            >
+              हिं
+            </button>
+          </div>
+
+          {/* Divider before reset/help */}
+          <div className="w-px self-stretch bg-surface-stroke mx-0.5" />
+
+          {/* Reset */}
+          <motion.button
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={resetToDefault}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-surface-stroke bg-surface-card/60 text-text-secondary hover:text-text-primary hover:border-solar/40 text-[11px] font-medium transition-colors"
+            aria-label="Reset simulator"
+            title="Reset to default state"
+          >
+            <Undo2 size={12} />
+            <span className="hidden sm:inline">{L(lang, "reset")}</span>
+          </motion.button>
+
+          {/* Help */}
+          <Link
+            href="/learn"
+            className="flex items-center justify-center w-8 h-8 rounded-full border border-surface-stroke bg-surface-card/60 text-text-secondary hover:text-solar hover:border-solar/40 transition-colors"
+            aria-label="Learn — Solar guide"
+            title="Learn: On-Grid vs Off-Grid vs Hybrid"
+          >
+            <HelpCircle size={15} />
+          </Link>
+        </div>
       </div>
 
-      {/* ── DIVIDER ── */}
-      <div className="w-px self-stretch bg-surface-stroke shrink-0 hidden sm:block" />
-
-      {/* ── CENTER: Time display + time preset buttons ── */}
-      <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-1 overflow-x-auto scrollbar-none">
+      {/* ── ROW 2 (mobile) / CENTER section (desktop): Time display + presets + weather ── */}
+      {/*
+        Mobile: full-width row, scrollable, borderTop separator
+        Desktop (md+): flex-1 center section within the single-row flex-row layout
+                       The row 2 div becomes the center piece between logo-row and right-controls.
+                       We achieve this by: on md+ the header is flex-row, row1 is flex-row too,
+                       so we need row2 to behave as flex-1 in the md+ context.
+                       Strategy: row2 is always rendered; on md+ it is inserted in the flex-row
+                       flow by ordering — but since row1 contains left AND right, we use
+                       CSS order to slot it between them on desktop.
+      */}
+      <div
+        className={[
+          // Mobile: second row, full width, scrollable
+          "flex items-center h-10 px-3 gap-1 overflow-x-auto scrollbar-none",
+          "border-t border-surface-stroke/30",
+          // Desktop: becomes the center flex-1 piece
+          "md:border-t-0 md:border-l md:border-r md:border-surface-stroke md:flex-1 md:justify-center",
+          "backdrop-blur-md",
+        ].join(" ")}
+      >
         {/* Clock readout */}
         <span className="text-[10px] font-bold text-text-primary tabular-nums shrink-0 w-[46px]">
           {formatTime(timeHour)}
@@ -124,7 +235,7 @@ export function TopBar() {
             <button
               key={preset.hour}
               onClick={() => setTimeHour(preset.hour)}
-              className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-medium border transition-all shrink-0 ${
+              className={`flex items-center gap-0.5 px-1.5 py-1 rounded-lg text-[10px] font-medium border transition-all shrink-0 ${
                 isActive
                   ? "border-solar bg-solar/10 text-solar btn-neon-solar"
                   : "border-surface-stroke text-text-muted hover:border-surface-stroke/80"
@@ -134,23 +245,21 @@ export function TopBar() {
               aria-label={`Set time to ${L(lang, preset.key)} (${formatTime(preset.hour)})`}
             >
               <span>{preset.icon}</span>
-              <span className="hidden md:inline">{L(lang, preset.key)}</span>
+              {/* Show label always (emoji + text) — no hidden class */}
+              <span className="ml-0.5">{L(lang, preset.key)}</span>
             </button>
           );
         })}
-      </div>
 
-      {/* ── DIVIDER ── */}
-      <div className="w-px self-stretch bg-surface-stroke shrink-0" />
+        {/* Divider between time presets and weather */}
+        <div className="w-px self-stretch bg-surface-stroke shrink-0 mx-1" />
 
-      {/* ── RIGHT GROUP: Weather + Language toggle + Reset + Help ── */}
-      <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-        {/* Weather buttons */}
+        {/* Weather buttons — always visible in row 2 */}
         {DAY_TYPES.map((dt) => (
           <button
             key={dt.value}
             onClick={() => setDayType(dt.value)}
-            className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-medium border transition-all ${
+            className={`flex items-center gap-0.5 px-1.5 py-1 rounded-lg text-[10px] font-medium border transition-all shrink-0 ${
               dayType === dt.value
                 ? "border-solar bg-solar/10 text-solar"
                 : "border-surface-stroke text-text-muted hover:border-surface-stroke/80"
@@ -160,69 +269,9 @@ export function TopBar() {
             aria-label={`Set weather to ${L(lang, dt.key)}`}
           >
             <span>{dt.icon}</span>
-            <span className="hidden lg:inline">{L(lang, dt.key)}</span>
+            <span className="ml-0.5 hidden md:inline">{L(lang, dt.key)}</span>
           </button>
         ))}
-
-        {/* Divider before actions */}
-        <div className="w-px self-stretch bg-surface-stroke mx-0.5" />
-
-        {/* Language toggle pill */}
-        <div
-          className="flex items-center gap-0.5 bg-surface-card rounded-lg p-0.5 border border-surface-stroke"
-          aria-label="Language toggle"
-        >
-          <button
-            onClick={() => setLang("en")}
-            className={`px-2 py-1 text-xs rounded-md transition-colors ${
-              lang === "en"
-                ? "bg-solar text-black font-semibold"
-                : "text-text-muted hover:text-text-primary"
-            }`}
-            aria-pressed={lang === "en"}
-            aria-label="Switch to English"
-          >
-            EN
-          </button>
-          <button
-            onClick={() => setLang("hi")}
-            className={`px-2 py-1 text-xs rounded-md transition-colors ${
-              lang === "hi"
-                ? "bg-solar text-black font-semibold"
-                : "text-text-muted hover:text-text-primary"
-            }`}
-            aria-pressed={lang === "hi"}
-            aria-label="Switch to Hindi"
-          >
-            हिं
-          </button>
-        </div>
-
-        {/* Divider before reset/help */}
-        <div className="w-px self-stretch bg-surface-stroke mx-0.5" />
-
-        {/* Reset */}
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-          onClick={resetToDefault}
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-full border border-surface-stroke bg-surface-card/60 text-text-secondary hover:text-text-primary hover:border-solar/40 text-[11px] font-medium transition-colors"
-          aria-label="Reset simulator"
-          title="Reset to default state"
-        >
-          <Undo2 size={12} />
-          <span className="hidden sm:inline">{L(lang, "reset")}</span>
-        </motion.button>
-
-        {/* Help */}
-        <Link
-          href="/learn"
-          className="flex items-center justify-center w-8 h-8 rounded-full border border-surface-stroke bg-surface-card/60 text-text-secondary hover:text-solar hover:border-solar/40 transition-colors"
-          aria-label="Learn — Solar guide"
-          title="Learn: On-Grid vs Off-Grid vs Hybrid"
-        >
-          <HelpCircle size={15} />
-        </Link>
       </div>
     </header>
   );
