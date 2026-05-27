@@ -14,48 +14,66 @@ const SchematicSVG = dynamic(
 
 export default function Home() {
   return (
-    // Outer wrapper — full viewport, no overflow on desktop
+    // Outer wrapper — full viewport, no overflow
     <div className="h-screen overflow-hidden flex flex-col bg-surface-dark text-text-primary">
       {/* TOP BAR — 2 rows (~h-14 + h-[50px] = ~h-[110px]) */}
       <TopBar />
 
       {/*
         MAIN BODY — fills remaining height
-        Desktop (lg+): flex-row 60/40 split, no overflow
-        Mobile (<lg): flex-col, scrollable
+        Vertical stack: SVG diagram (30vh) on top, controls (70vh) on bottom
       */}
-      <main className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-y-auto lg:overflow-hidden">
+      <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
 
-        {/* ── LEFT 60% — Schematic ONLY (full height) ── */}
+        {/* ── TOP 30vh — Schematic SVG (full width) ── */}
         <section
           className="
-            w-full lg:w-[60%]
-            min-h-0
-            border-b lg:border-b-0 lg:border-r border-surface-stroke
-            overflow-hidden
+            w-full
+            shrink-0
+            border-b border-surface-stroke
             bg-surface-card/20
+            overflow-hidden
             p-2
           "
+          style={{ height: "30vh", minHeight: 200 }}
         >
           <SchematicSVG />
         </section>
 
-        {/* ── RIGHT 40% — Appliances (top) + Controls (bottom) ── */}
+        {/* ── BOTTOM — Appliances (left/center) + Controls (right), full width, scrollable ── */}
         <section
           className="
-            w-full lg:w-[40%]
-            flex flex-col
+            flex-1
+            flex flex-col lg:flex-row
             min-h-0
             overflow-hidden
           "
         >
-          {/* TOP ~65% of right column — Appliance grid */}
-          <div className="flex-[65] p-2 min-h-0 overflow-y-auto scrollbar-thin border-b border-surface-stroke">
+          {/* Appliances — takes most of the width */}
+          <div
+            className="
+              flex-1
+              p-3
+              min-h-0
+              overflow-y-auto
+              scrollbar-thin
+              border-b lg:border-b-0 lg:border-r border-surface-stroke
+            "
+          >
             <ApplianceGrid />
           </div>
 
-          {/* BOTTOM ~35% of right column — Time slider + Day-type */}
-          <div className="flex-[35] p-2 min-h-0 overflow-y-auto scrollbar-thin">
+          {/* Controls (time slider, day type) — fixed width on desktop, full width on mobile */}
+          <div
+            className="
+              w-full lg:w-72 xl:w-80
+              shrink-0
+              p-3
+              min-h-0
+              overflow-y-auto
+              scrollbar-thin
+            "
+          >
             <ControlsPanel />
           </div>
         </section>
