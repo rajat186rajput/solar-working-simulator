@@ -26,9 +26,12 @@ interface SimStore extends SimState {
   activateScenario: (scenario: ScenarioPreset) => void;
   resetToDefault: () => void;
   recompute: () => void;
+  // SoC lock
+  socLocked: boolean;
+  setSocLocked: (v: boolean) => void;
 }
 
-function computeState(state: Partial<SimState>): Partial<SimState> {
+function computeState(state: Partial<SimState> & { socLocked?: boolean }): Partial<SimState> {
   const mode = state.mode ?? "hybrid";
   const timeHour = state.timeHour ?? 14;
   const dayType = state.dayType ?? "clear";
@@ -43,6 +46,7 @@ function computeState(state: Partial<SimState>): Partial<SimState> {
   const applianceQtys = state.applianceQtys ?? DEFAULT_APPLIANCE_QTYS;
   const gridOnlyAppliances = state.gridOnlyAppliances ?? new Set<string>();
   const currentNetMeterWh = state.netMeterWh ?? 0;
+  const socLocked = state.socLocked ?? true;
 
   const loadW = calcTotalLoadQty(applianceQtys, gridAvailable, gridOnlyAppliances);
 
@@ -81,13 +85,14 @@ function computeState(state: Partial<SimState>): Partial<SimState> {
     systemOffline: result.systemOffline,
     surgeActive: result.surgeActive,
     inverterOverload: result.inverterOverload,
-    batterySoc: result.batteryNewSoc,
+    // When SoC is locked, preserve the user-set batterySoc; otherwise let simulation drive it
+    batterySoc: socLocked ? batterySoc : result.batteryNewSoc,
     appliancesOn,
     statusLog: newLog,
   };
 }
 
-const INITIAL_STATE: SimState = {
+const INITIAL_STATE: SimState & { socLocked: boolean } = {
   mode: "hybrid",
   timeHour: 14,
   dayType: "clear",
@@ -102,6 +107,7 @@ const INITIAL_STATE: SimState = {
   appliancesOn: [...DEFAULT_APPLIANCES_ON],
   applianceQtys: DEFAULT_APPLIANCE_QTYS.map((e) => ({ ...e })),
   gridOnlyAppliances: new Set<string>(),
+  socLocked: true,
 
   solarW: getSolarW(14, "clear", 4.4),
   loadW: calcTotalLoadQty(DEFAULT_APPLIANCE_QTYS),
@@ -119,7 +125,7 @@ const INITIAL_STATE: SimState = {
 
 // Apply initial computation
 const computed = computeState(INITIAL_STATE);
-const BOOT_STATE: SimState = { ...INITIAL_STATE, ...computed };
+const BOOT_STATE: SimState & { socLocked: boolean } = { ...INITIAL_STATE, ...computed };
 
 export const useSimStore = create<SimStore>((set, get) => ({
   ...BOOT_STATE,
@@ -267,5 +273,12 @@ export const useSimStore = create<SimStore>((set, get) => ({
 
   resetToDefault() {
     set({ ...BOOT_STATE });
+  },
+
+  setSocLocked(v: boolean) {
+    set((s) => {
+      const next = { ...s, socLocked: v };
+      return { socLocked: v, ...computeState(next) } as Partial<SimStore>;
+    });
   },
 }));

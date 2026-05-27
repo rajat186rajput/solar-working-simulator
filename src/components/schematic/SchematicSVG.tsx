@@ -162,13 +162,31 @@ function SolarNodeControls() {
   );
 }
 
-// ─── Battery node controls (FIX 4 + FIX 5 + FIX 10) ─────────────────────
+// ─── Battery DOD factors (mirrors simulation.ts constants) ───────────────
+const DOD_FACTOR: Record<"lifepo4" | "lead-acid", number> = {
+  lifepo4: 0.90,
+  "lead-acid": 0.50,
+};
+const INVERTER_EFF = 0.95;
+
+// ─── Format hours → "2h 15m" or "45m" ───────────────────────────────────
+function fmtHours(h: number): string {
+  const hrs = Math.floor(h);
+  const mins = Math.round((h - hrs) * 60);
+  if (hrs > 0) return `${hrs}h ${mins}m`;
+  return `${mins}m`;
+}
+
+// ─── Battery node controls (FIX 4 + FIX 5 + FIX 10 + SoC slider) ────────
 function BatteryNodeControls() {
   const {
     batteryKwh, setBatteryKwh,
     batteryType, setBatteryType,
     batteryOn, toggleBattery,
-    batterySoc, loadW,
+    batterySoc, setBatterySoc,
+    batteryChargeW, batteryDischargeW,
+    loadW,
+    socLocked, setSocLocked,
   } = useSimStore();
 
   const handleKwhChange = (kwh: number) => {
@@ -191,8 +209,22 @@ function BatteryNodeControls() {
     : batterySoc >= 0.2 ? "#F97316"
     : "#EF4444";
 
+  // Time estimates
+  const usableKwh = batteryKwh * DOD_FACTOR[batteryType] * INVERTER_EFF;
+  const usableWh = usableKwh * 1000;
+  let timeEstimate: string;
+  if (batteryChargeW > 0) {
+    const hoursToFull = ((1 - batterySoc) * usableWh) / batteryChargeW;
+    timeEstimate = `⚡ Full in ${fmtHours(hoursToFull)}`;
+  } else if (batteryDischargeW > 0) {
+    const hoursToEmpty = (batterySoc * usableWh) / batteryDischargeW;
+    timeEstimate = `🔋 Empty in ${fmtHours(hoursToEmpty)}`;
+  } else {
+    timeEstimate = "~ Idle";
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "4px 2px 0", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "4px 2px 0", height: "100%" }}>
       {/* Toggle row */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <CompactToggle isOn={batteryOn} onToggle={toggleBattery} onColor="#10B981" />
@@ -203,6 +235,57 @@ function BatteryNodeControls() {
         <span style={{ marginLeft: "auto", fontSize: 9, color: "#64748B", fontVariantNumeric: "tabular-nums" }}>
           Backup: <span style={{ color: socColor, fontWeight: 700 }}>{backupDisplay}</span>
         </span>
+      </div>
+
+      {/* SoC slider row */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+          <span style={{ fontSize: 10, color: socColor, fontWeight: 700, fontVariantNumeric: "tabular-nums", minWidth: 28 }}>
+            {Math.round(batterySoc * 100)}%
+          </span>
+          <button
+            onClick={() => setSocLocked(!socLocked)}
+            aria-label={socLocked ? "Unlock SoC (let simulation update)" : "Lock SoC (manual control)"}
+            style={{
+              fontSize: 11,
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+              lineHeight: 1,
+              color: socLocked ? "#F6C90E" : "#64748B",
+            }}
+          >
+            {socLocked ? "🔒" : "🔓"}
+          </button>
+          <span style={{ fontSize: 9, color: "#475569", marginLeft: 2 }}>
+            {socLocked ? "manual" : "auto"}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={Math.round(batterySoc * 100)}
+          onChange={(e) => {
+            setBatterySoc(Number(e.target.value) / 100);
+            setSocLocked(true);
+          }}
+          disabled={!batteryOn || batteryKwh <= 0}
+          aria-label="Battery state of charge"
+          style={{
+            width: "100%",
+            height: 6,
+            accentColor: socColor,
+            cursor: batteryOn && batteryKwh > 0 ? "pointer" : "default",
+            opacity: batteryOn && batteryKwh > 0 ? 1 : 0.4,
+          }}
+        />
+        {/* Time estimate */}
+        <div style={{ fontSize: 10, color: "#94A3B8", lineHeight: 1.2 }}>
+          {batteryOn && batteryKwh > 0 ? timeEstimate : "— No battery"}
+        </div>
       </div>
 
       {/* Capacity dropdown */}
@@ -597,7 +680,7 @@ export function SchematicSVG() {
                 socPercent={batteryOn && useSimStore.getState().batteryKwh > 0 ? batterySoc : 0}
                 tooltip="Charges in the day, powers your home at night or during cuts."
                 controls={<BatteryNodeControls />}
-                controlsHeight={90}
+                controlsHeight={145}
               />
             </motion.g>
           )}
