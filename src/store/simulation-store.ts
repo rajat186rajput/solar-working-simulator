@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { Mode, DayType, BatteryType, SimState, ApplianceQtyEntry } from "@/lib/types";
+import type { Mode, DayType, BatteryType, SimState } from "@/lib/types";
 import { runSimulation } from "@/lib/simulation";
 import { calcTotalLoadQty } from "@/lib/appliances";
 import { getSolarW } from "@/lib/solar-curve";
