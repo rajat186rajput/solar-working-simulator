@@ -1,12 +1,19 @@
 "use client";
 
+import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Undo2, HelpCircle } from "lucide-react";
-import { ModeToggle } from "@/components/controls/ModeToggle";
+import { Undo2, HelpCircle, ChevronDown } from "lucide-react";
 import { useSimStore } from "@/store/simulation-store";
 import { calcBackupHours } from "@/lib/simulation";
 import { formatWh } from "@/lib/utils";
+import type { Mode } from "@/lib/types";
+
+const MODES: { value: Mode; label: string; icon: string }[] = [
+  { value: "on-grid",  label: "On-Grid",  icon: "🔌" },
+  { value: "off-grid", label: "Off-Grid", icon: "🔆" },
+  { value: "hybrid",   label: "Hybrid",   icon: "⚡" },
+];
 
 function LogoMark() {
   return (
@@ -88,6 +95,81 @@ function Divider() {
   return <div className="w-px self-stretch bg-surface-stroke mx-1 shrink-0" />;
 }
 
+// ─── Mode dropdown button ───────────────────────────────────────────────────
+function ModeDropdown() {
+  const { mode, setMode } = useSimStore();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const current = MODES.find((m) => m.value === mode) ?? MODES[0];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-surface-stroke bg-surface-card/80 text-text-primary hover:border-solar/50 hover:bg-surface-card text-sm font-semibold transition-colors"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Select solar system mode"
+      >
+        <span>{current.icon}</span>
+        <span className="tabular-nums">{current.label}</span>
+        <ChevronDown
+          size={13}
+          className="text-text-muted shrink-0 transition-transform"
+          style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)" }}
+        />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -6, scale: 0.96 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-50 min-w-[140px] rounded-xl border border-surface-stroke bg-surface-card shadow-lg overflow-hidden"
+            role="listbox"
+            aria-label="Solar system mode"
+          >
+            {MODES.map((m) => (
+              <button
+                key={m.value}
+                role="option"
+                aria-selected={mode === m.value}
+                onClick={() => { setMode(m.value); setOpen(false); }}
+                className={`w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors ${
+                  mode === m.value
+                    ? "bg-solar/15 text-solar"
+                    : "text-text-secondary hover:bg-surface-dark/60 hover:text-text-primary"
+                }`}
+              >
+                <span>{m.icon}</span>
+                <span>{m.label}</span>
+                {mode === m.value && (
+                  <span className="ml-auto text-solar text-xs">✓</span>
+                )}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 export function TopBar() {
   const {
     resetToDefault,
@@ -161,9 +243,9 @@ export function TopBar() {
           </AnimatePresence>
         </div>
 
-        {/* Center — Mode Toggle (focal point) */}
+        {/* Center — Mode Dropdown */}
         <div className="flex justify-center flex-1">
-          <ModeToggle />
+          <ModeDropdown />
         </div>
 
         {/* Right — Reset + Help */}

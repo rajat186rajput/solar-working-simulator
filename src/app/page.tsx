@@ -2,6 +2,7 @@ import dynamic from "next/dynamic";
 import { TopBar } from "@/components/TopBar";
 import { ApplianceGrid } from "@/components/controls/ApplianceGrid";
 import { ControlsPanel } from "@/components/controls/ControlsPanel";
+import { TopStrip } from "@/components/TopStrip";
 
 // SSR-off for heavy animated SVG (Framer Motion + particles)
 const SchematicSVG = dynamic(
@@ -21,11 +22,14 @@ export default function Home() {
 
       {/*
         MAIN BODY — fills remaining height
-        Vertical stack: SVG diagram (30vh) on top, controls (70vh) on bottom
+        Vertical stack: TopStrip + SVG diagram (40vh) on top, controls on bottom
       */}
       <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
 
-        {/* ── TOP 30vh — Schematic SVG (full width) ── */}
+        {/* ── TOP STRIP — Time slider + Weather buttons ── */}
+        <TopStrip />
+
+        {/* ── TOP 40vh — Schematic SVG (full width) ── */}
         <section
           className="
             w-full
@@ -35,7 +39,7 @@ export default function Home() {
             overflow-hidden
             p-2
           "
-          style={{ height: "30vh", minHeight: 200 }}
+          style={{ height: "40vh", minHeight: 200 }}
         >
           <SchematicSVG />
         </section>

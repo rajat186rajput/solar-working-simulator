@@ -6,7 +6,7 @@ import { PowerFlowLine } from "./PowerFlowLine";
 import { ParticleStream } from "./ParticleStream";
 import { ComponentNode } from "./ComponentNode";
 
-// ─── Layout (viewBox 0 0 1000 280) — pure LEFT-TO-RIGHT pipeline ──────────────
+// ─── Layout (viewBox 0 0 1000 320) — pure LEFT-TO-RIGHT pipeline ──────────────
 //
 // COLUMN 1 (LEFT)    COLUMN 2 (CENTER)    COLUMN 3           COLUMN 4 (RIGHT)
 //                                          (CENTER-RIGHT)
@@ -26,7 +26,7 @@ import { ComponentNode } from "./ComponentNode";
 //   Grid     → Inverter : M 185 210 C 300 210 300 150 355 150   (curve bot-left → center)
 //   Inverter → Battery  : M 505 150 L 595 150                   (horizontal right)
 //   Battery  → Inverter : M 595 154 L 505 154                   (horizontal left — slightly offset)
-//   Inverter → Ghar     : M 430 185 L 430 265 L 890 265 L 890 185  (bottom bypass around battery)
+//   Inverter → Ghar     : M 430 185 L 430 305 L 890 305 L 890 185  (bottom bypass — routed below all nodes)
 
 const PATHS = {
   solar:         "M 185 95  C 300 95  300 150 355 150",
@@ -34,7 +34,7 @@ const PATHS = {
   gridExport:    "M 360 154 C 300 154 300 210 185 210",
   batteryCharge: "M 505 150 L 595 150",
   batteryDisch:  "M 595 154 L 505 154",
-  load:          "M 430 185 L 430 265 L 890 265 L 890 185",
+  load:          "M 430 185 L 430 305 L 890 305 L 890 185",
 };
 
 // ─── Solar capacity presets ────────────────────────────────────────────────
@@ -344,7 +344,7 @@ export function SchematicSVG() {
     // 30vh container — full width, short height
     <div className="w-full h-full" style={{ position: "relative" }}>
       <svg
-        viewBox="0 0 1000 280"
+        viewBox="0 0 1000 320"
         className="w-full h-full"
         preserveAspectRatio="xMidYMid meet"
         role="img"
@@ -363,7 +363,7 @@ export function SchematicSVG() {
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
         </defs>
-        <rect width="1000" height="280" fill="url(#grid-bg)" opacity="0.5" />
+        <rect width="1000" height="320" fill="url(#grid-bg)" opacity="0.5" />
 
         {/* ── FLOW LINES ── */}
 
@@ -582,7 +582,7 @@ export function SchematicSVG() {
         {/* On-Grid grid-fail blackout overlay */}
         {isOnGridOffline && (
           <motion.rect
-            x={0} y={0} width={1000} height={280}
+            x={0} y={0} width={1000} height={320}
             fill="#000000"
             pointerEvents="none"
             initial={{ opacity: 0 }}
