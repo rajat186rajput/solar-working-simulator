@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { ThemeProvider } from "next-themes";
 import { DottedSurface } from "@/components/ui/dotted-surface";
+import { Providers } from "@/components/Providers";
 
 export const metadata: Metadata = {
   title: "Solar Working Simulator — Live On-Grid, Off-Grid & Hybrid Demo",
@@ -37,11 +37,12 @@ export default function RootLayout({
           rel="stylesheet"
         />
       </head>
-      <body className="antialiased bg-surface-dark text-text-primary font-sans">
-        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+      <body className="antialiased text-text-primary font-sans">
+        <Providers>
+          <div className="fixed inset-0 -z-20 bg-surface-dark" />
           <DottedSurface />
           {children}
-        </ThemeProvider>
+        </Providers>
       </body>
     </html>
   );
