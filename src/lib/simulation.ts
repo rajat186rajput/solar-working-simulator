@@ -88,8 +88,13 @@ export function runSimulation(input: SimInput): SimResult {
   // Override batterySoc for all calculations below
   const activeSoc = effectiveBatterySoc;
 
-  // Check inverter overload
-  const inverterOverload = effectiveLoadW > inverterWatts;
+  // Check inverter overload.
+  // When grid is available (on-grid mode, or hybrid with gridAvailable=true),
+  // the grid can supply unlimited power — the inverter is never truly overloaded.
+  // OVERLOAD only applies when operating without grid support (off-grid mode,
+  // or hybrid/on-grid with gridAvailable=false).
+  const gridCanBackstop = gridAvailable && (mode === "on-grid" || mode === "hybrid");
+  const inverterOverload = !gridCanBackstop && effectiveLoadW > inverterWatts;
 
   let gridImportW = 0;
   let gridExportW = 0;
@@ -101,8 +106,8 @@ export function runSimulation(input: SimInput): SimResult {
   // batteryNewSoc starts from real batterySoc; activeSoc drives logic
   let batteryNewSoc = batterySoc;
 
-  if (inverterOverload && mode !== "on-grid") {
-    // Inverter trip — system overloaded
+  if (inverterOverload) {
+    // Inverter trip — system overloaded (only reachable when grid cannot backstop)
     return {
       solarW,
       loadW: rawLoadW,
