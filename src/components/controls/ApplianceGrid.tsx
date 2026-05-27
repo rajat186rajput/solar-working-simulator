@@ -45,25 +45,51 @@ export function ApplianceGrid() {
           return (
             <motion.div
               key={appliance.id}
-              whileHover={{ y: -1 }}
+              whileHover={{ y: -1, scale: 1.02 }}
               whileTap={{ scale: 0.97 }}
               animate={{
-                backgroundColor: isOn ? "rgba(30,41,59,1)" : "rgba(15,23,42,0.5)",
-                borderColor: isOn ? catColor : "#334155",
+                opacity: isOn ? 1 : 0.5,
               }}
               transition={{ duration: 0.2 }}
-              className="relative rounded-lg border p-1.5 select-none flex flex-col gap-0.5"
+              className="relative rounded-lg border p-1.5 select-none flex flex-col gap-0.5 overflow-hidden"
+              style={{
+                background: isOn
+                  ? "rgba(30, 41, 59, 0.75)"
+                  : "rgba(15, 23, 42, 0.45)",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                borderColor: isOn ? catColor : "#334155",
+                boxShadow: isOn
+                  ? `0 0 10px ${catColor}28, inset 0 0 10px ${catColor}0a`
+                  : "none",
+                transition: "all 0.2s ease",
+              }}
               role="checkbox"
               aria-checked={isOn}
               aria-label={`Toggle ${appliance.name} (${appliance.watts}W × ${qty})`}
             >
+              {/* Category color accent strip — top border */}
+              <div
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 3,
+                  background: isOn ? catColor : "transparent",
+                  borderRadius: "8px 8px 0 0",
+                  transition: "background 0.2s ease",
+                }}
+              />
+
               {/* Icon + switch row */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mt-0.5">
                 <div
                   className="p-1 rounded cursor-pointer"
                   style={{
-                    backgroundColor: isOn ? `${catColor}20` : "rgba(51,65,85,0.4)",
+                    backgroundColor: isOn ? `${catColor}25` : "rgba(51,65,85,0.4)",
                     color: isOn ? catColor : "#475569",
+                    transition: "all 0.2s ease",
                   }}
                   onClick={() => toggleAppliance(appliance.id)}
                 >
@@ -82,7 +108,10 @@ export function ApplianceGrid() {
               {/* Name */}
               <div
                 className="text-[10px] font-medium leading-tight truncate cursor-pointer"
-                style={{ color: isOn ? "#F1F5F9" : "#64748B" }}
+                style={{
+                  color: isOn ? "#F1F5F9" : "#64748B",
+                  transition: "color 0.2s ease",
+                }}
                 onClick={() => toggleAppliance(appliance.id)}
               >
                 {lang === "hi" ? appliance.hinglishLabel : appliance.name}

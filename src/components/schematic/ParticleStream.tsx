@@ -11,7 +11,9 @@ const FLOW_COLORS: Record<FlowType, string> = {
   load: "#F8FAFC",
 };
 
-const PARTICLE_COUNT = 6;
+// Base particle count — scales up with power
+const BASE_PARTICLES = 5;
+const MAX_PARTICLES  = 10;
 
 interface ParticleStreamProps {
   pathD: string;
@@ -25,36 +27,65 @@ export function ParticleStream({ pathD, powerW = 0, flowType, isActive }: Partic
 
   const safePowerW = Number.isFinite(powerW) ? powerW : 0;
   const color = FLOW_COLORS[flowType];
-  // duration proportional to watts — higher load = faster animation (speed-only, size is fixed)
+
+  // Duration: higher power = faster
   const durationMs = Math.max(500, (3 - (safePowerW / 3000) * 2) * 1000);
 
-  // Fixed arrow size — does NOT scale with load
-  const arrowW = 8;   // tip-to-base length (forward direction)
-  const arrowH = 8;   // half-height of base
+  // Particle count scales with power (5–10)
+  const particleCount = Math.round(
+    BASE_PARTICLES + Math.min(1, safePowerW / 3000) * (MAX_PARTICLES - BASE_PARTICLES)
+  );
+
+  // Arrow geometry — fixed size
+  const arrowW = 8;
+  const arrowH = 8;
+
+  // Trail particles: 2 trailing ghost copies per main particle at slight opacity
+  const TRAIL_OFFSETS = [-0.04, -0.08]; // fraction of duration behind
 
   return (
     <>
-      {Array.from({ length: PARTICLE_COUNT }).map((_, i) => (
-        // Filled triangle pointing right (+x). CSS offset-rotate:auto rotates it
-        // to match the path tangent direction at each offset-distance position.
-        // Triangle: tip at (arrowW, 0), base corners at (0, ±arrowH).
+      {/* Main particles */}
+      {Array.from({ length: particleCount }).map((_, i) => (
         <path
-          key={i}
+          key={`main-${i}`}
           d={`M ${arrowW} 0 L 0 ${-arrowH} L 0 ${arrowH} Z`}
           fill={color}
-          opacity={isActive ? 0.9 : 0}
+          opacity={0.92}
           style={{
             offsetPath: `path("${pathD}")`,
             offsetDistance: "0%",
             offsetRotate: "auto",
-            animationName: isActive ? "flowParticle" : "none",
+            animationName: "flowParticle",
             animationDuration: `${durationMs}ms`,
             animationTimingFunction: "linear",
             animationIterationCount: "infinite",
-            animationDelay: `${(i / PARTICLE_COUNT) * durationMs}ms`,
+            animationDelay: `${(i / particleCount) * durationMs}ms`,
           } as React.CSSProperties}
         />
       ))}
+
+      {/* Trailing glow particles — smaller, more transparent */}
+      {Array.from({ length: particleCount }).map((_, i) =>
+        TRAIL_OFFSETS.map((offsetFraction, ti) => (
+          <path
+            key={`trail-${i}-${ti}`}
+            d={`M ${arrowW * 0.7} 0 L 0 ${-arrowH * 0.7} L 0 ${arrowH * 0.7} Z`}
+            fill={color}
+            opacity={0.25 - ti * 0.1}
+            style={{
+              offsetPath: `path("${pathD}")`,
+              offsetDistance: "0%",
+              offsetRotate: "auto",
+              animationName: "flowParticle",
+              animationDuration: `${durationMs}ms`,
+              animationTimingFunction: "linear",
+              animationIterationCount: "infinite",
+              animationDelay: `${(i / particleCount) * durationMs + offsetFraction * durationMs}ms`,
+            } as React.CSSProperties}
+          />
+        ))
+      )}
     </>
   );
 }

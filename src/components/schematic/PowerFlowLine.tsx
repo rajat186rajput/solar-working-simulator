@@ -12,6 +12,16 @@ const FLOW_COLORS: Record<FlowType, string> = {
   load: "#F8FAFC",
 };
 
+// Maps each flow type to the SVG filter id defined in SchematicSVG defs
+const GLOW_FILTER: Record<FlowType, string> = {
+  solar:              "url(#glow-yellow)",
+  "grid-import":      "url(#glow-blue)",
+  "grid-export":      "url(#glow-purple)",
+  "battery-charge":   "url(#glow-green)",
+  "battery-discharge":"url(#glow-orange)",
+  load:               "url(#glow-white)",
+};
+
 interface PowerFlowLineProps {
   pathD: string;
   powerW: number;
@@ -27,6 +37,8 @@ export function PowerFlowLine({ pathD, powerW, flowType, isActive, gridFail }: P
     ? "#EF4444"
     : FLOW_COLORS[flowType];
 
+  const glowFilter = isActive && !gridFail ? GLOW_FILTER[flowType] : undefined;
+
   return (
     <motion.path
       d={pathD}
@@ -41,6 +53,7 @@ export function PowerFlowLine({ pathD, powerW, flowType, isActive, gridFail }: P
       transition={{ duration: 0.4, ease: "easeOut" }}
       strokeLinecap="round"
       strokeDasharray={isActive ? "none" : "4 8"}
+      filter={glowFilter}
       aria-hidden="true"
       className="power-flow-path"
     />

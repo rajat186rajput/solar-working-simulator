@@ -79,7 +79,14 @@ export function TopBar() {
   const isNight = timeHour < 5 || timeHour >= 19;
 
   return (
-    <header className="flex items-center border-b border-surface-stroke bg-surface-dark/95 backdrop-blur-md shrink-0 px-3 sm:px-4 h-14 gap-2 sm:gap-3">
+    <header
+      className="flex items-center shrink-0 px-3 sm:px-4 h-14 gap-2 sm:gap-3 backdrop-blur-md"
+      style={{
+        background: "linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(30,41,59,0.97) 100%)",
+        borderBottom: "1px solid transparent",
+        borderImage: "linear-gradient(90deg, transparent 0%, #3B82F6 30%, #F59E0B 70%, transparent 100%) 1",
+      }}
+    >
 
       {/* ── LEFT: Logo + optional alert badge ── */}
       <div className="flex items-center gap-2 shrink-0">
@@ -119,9 +126,10 @@ export function TopBar() {
               onClick={() => setTimeHour(preset.hour)}
               className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-medium border transition-all shrink-0 ${
                 isActive
-                  ? "border-solar bg-solar/10 text-solar"
+                  ? "border-solar bg-solar/10 text-solar btn-neon-solar"
                   : "border-surface-stroke text-text-muted hover:border-surface-stroke/80"
               }`}
+              style={isActive ? { boxShadow: "0 0 10px rgba(246,201,14,0.45)" } : undefined}
               aria-pressed={isActive}
               aria-label={`Set time to ${L(lang, preset.key)} (${formatTime(preset.hour)})`}
             >
@@ -147,6 +155,7 @@ export function TopBar() {
                 ? "border-solar bg-solar/10 text-solar"
                 : "border-surface-stroke text-text-muted hover:border-surface-stroke/80"
             }`}
+            style={dayType === dt.value ? { boxShadow: "0 0 10px rgba(246,201,14,0.40)" } : undefined}
             aria-pressed={dayType === dt.value}
             aria-label={`Set weather to ${L(lang, dt.key)}`}
           >

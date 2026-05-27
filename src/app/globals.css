@@ -54,7 +54,7 @@
   }
 
   body {
-    background-color: transparent;
+    background-color: transparent !important;
     color: #F1F5F9;
     font-family: Inter, sans-serif;
   }
@@ -71,6 +71,31 @@
   from { offset-distance: 0%; }
   to   { offset-distance: 100%; }
 }
+
+/* Node border pulse glow for charging/active states */
+@keyframes pulse-glow {
+  0%, 100% { filter: drop-shadow(0 0 4px currentColor); }
+  50%       { filter: drop-shadow(0 0 12px currentColor) drop-shadow(0 0 20px currentColor); }
+}
+.animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+
+/* Battery shimmer when charging */
+@keyframes battery-shimmer {
+  0%   { x: -40px; }
+  100% { x: 200px; }
+}
+.battery-shimmer-rect { animation: battery-shimmer 1.6s linear infinite; }
+
+/* Header gradient border glow */
+.topbar-gradient-border {
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, transparent 0%, #3B82F6 30%, #F59E0B 70%, transparent 100%) 1;
+}
+
+/* Active button neon glow */
+.btn-neon-solar  { box-shadow: 0 0 8px rgba(246, 201, 14, 0.55); }
+.btn-neon-blue   { box-shadow: 0 0 8px rgba(59, 130, 246, 0.55); }
+.btn-neon-green  { box-shadow: 0 0 8px rgba(34, 197, 94, 0.55); }
 
 /* Thin scrollbar for inner panels */
 .scrollbar-thin {

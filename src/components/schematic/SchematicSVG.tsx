@@ -378,8 +378,13 @@ export function GharDrawerContents({
     <div className="flex flex-col h-full">
       {/* Header */}
       <div
-        className="flex items-center justify-between px-4 py-3 border-b border-surface-stroke shrink-0"
-        style={{ background: "#1E293B" }}
+        className="flex items-center justify-between px-4 py-3 border-b shrink-0"
+        style={{
+          background: "rgba(15, 23, 42, 0.90)",
+          backdropFilter: "blur(12px)",
+          WebkitBackdropFilter: "blur(12px)",
+          borderBottomColor: "rgba(255,255,255,0.08)",
+        }}
       >
         <div className="flex items-center gap-2">
           <span className="text-sm font-semibold text-text-primary">{L(lang, "appliancesTitle")}</span>
@@ -462,9 +467,11 @@ function GharDrawer({
             className="absolute top-0 right-0 h-full z-50"
             style={{
               width: 320,
-              background: "#0F172A",
-              borderLeft: "1px solid #334155",
-              boxShadow: "-8px 0 32px rgba(0,0,0,0.6)",
+              background: "rgba(15, 23, 42, 0.88)",
+              backdropFilter: "blur(16px)",
+              WebkitBackdropFilter: "blur(16px)",
+              borderLeft: "1px solid rgba(255,255,255,0.08)",
+              boxShadow: "-8px 0 40px rgba(0,0,0,0.7)",
             }}
             initial={{ x: 320 }}
             animate={{ x: 0 }}
@@ -536,11 +543,45 @@ export function SchematicSVG() {
         <title>{`Solar power flow diagram — ${mode} mode`}</title>
         <desc>Shows real-time power flow between solar panels, battery, grid, and home load.</desc>
 
-        {/* Background grid lines */}
+        {/* Background grid lines + neon glow filters */}
         <defs>
           <pattern id="grid-bg" width="40" height="40" patternUnits="userSpaceOnUse">
             <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1E293B" strokeWidth="0.5" />
           </pattern>
+
+          {/* Neon glow filters for flow lines */}
+          <filter id="glow-yellow" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="2.5" result="blur1" />
+            <feGaussianBlur stdDeviation="5" result="blur2" in="SourceGraphic" />
+            <feMerge>
+              <feMergeNode in="blur2" />
+              <feMergeNode in="blur1" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="glow-blue" x="-40%" y="-40%" width="180%" height="180%">
+            <feColorMatrix type="matrix" values="0 0 0 0 0.23  0 0 0 0 0.51  0 0 0 0 0.96  0 0 0 1 0" result="blue" />
+            <feGaussianBlur stdDeviation="3" result="blur" in="blue" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <filter id="glow-green" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <filter id="glow-orange" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <filter id="glow-purple" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          <filter id="glow-white" x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+
+          {/* Legacy node glow */}
           <filter id="node-glow-solar" x="-30%" y="-30%" width="160%" height="160%">
             <feGaussianBlur stdDeviation="3" result="blur" />
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
@@ -652,96 +693,78 @@ export function SchematicSVG() {
           isActive={!systemOffline && loadW > 0}
         />
 
-        {/* ── FLOW WATT LABELS (W • kWh • ₹/hr) ── */}
+        {/* ── FLOW WATT LABELS — pill background + colored text ── */}
 
         {/* Solar → Inverter label (bezier midpoint ≈ 293,118, label ABOVE at y=104) */}
         {effectiveSolarW > 0 && !isOnGridOffline && solarOn && (
-          <text
-            x={293} y={104}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontFamily="Inter, sans-serif"
-            className="pointer-events-none"
-          >
-            <tspan fill="#94A3B8" fontSize="10">{Math.round(effectiveSolarW)}W</tspan>
-            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(effectiveSolarW / 1000).toFixed(1)}kWh</tspan>
-            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(effectiveSolarW / 1000 * 6.5)}/hr</tspan>
-          </text>
+          <g className="pointer-events-none">
+            <rect x={233} y={93} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <text x={293} y={104} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
+              <tspan fill="#F6C90E" fontSize="10" fontWeight="600">{Math.round(effectiveSolarW)}W</tspan>
+              <tspan dx="5" fill="#6EE7B7" fontSize="9">{(effectiveSolarW / 1000).toFixed(1)}kWh</tspan>
+              <tspan dx="5" fill="#FDE68A" fontSize="9">₹{Math.round(effectiveSolarW / 1000 * 6.5)}/hr</tspan>
+            </text>
+          </g>
         )}
 
-        {/* Grid Import label (bezier midpoint ≈ 293,208, label ABOVE at y=194) */}
+        {/* Grid Import label */}
         {showGrid && gridImportW > 0 && gridAvailable && (
-          <text
-            x={293} y={194}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontFamily="Inter, sans-serif"
-            className="pointer-events-none"
-          >
-            <tspan fill="#94A3B8" fontSize="10">{Math.round(gridImportW)}W</tspan>
-            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(gridImportW / 1000).toFixed(1)}kWh</tspan>
-            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(gridImportW / 1000 * 6.5)}/hr</tspan>
-          </text>
+          <g className="pointer-events-none">
+            <rect x={233} y={183} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <text x={293} y={194} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
+              <tspan fill="#60A5FA" fontSize="10" fontWeight="600">{Math.round(gridImportW)}W</tspan>
+              <tspan dx="5" fill="#6EE7B7" fontSize="9">{(gridImportW / 1000).toFixed(1)}kWh</tspan>
+              <tspan dx="5" fill="#FDE68A" fontSize="9">₹{Math.round(gridImportW / 1000 * 6.5)}/hr</tspan>
+            </text>
+          </g>
         )}
 
-        {/* Grid Export label (bezier midpoint ≈ 293,208, label ABOVE at y=194 — mutually exclusive with import) */}
+        {/* Grid Export label */}
         {showGrid && gridExportW > 0 && gridAvailable && (
-          <text
-            x={293} y={194}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontFamily="Inter, sans-serif"
-            className="pointer-events-none"
-          >
-            <tspan fill="#94A3B8" fontSize="10">{Math.round(gridExportW)}W</tspan>
-            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(gridExportW / 1000).toFixed(1)}kWh</tspan>
-            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(gridExportW / 1000 * 6.5)}/hr</tspan>
-          </text>
+          <g className="pointer-events-none">
+            <rect x={233} y={183} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <text x={293} y={194} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
+              <tspan fill="#C084FC" fontSize="10" fontWeight="600">{Math.round(gridExportW)}W</tspan>
+              <tspan dx="5" fill="#6EE7B7" fontSize="9">{(gridExportW / 1000).toFixed(1)}kWh</tspan>
+              <tspan dx="5" fill="#FDE68A" fontSize="9">₹{Math.round(gridExportW / 1000 * 6.5)}/hr</tspan>
+            </text>
+          </g>
         )}
 
-        {/* Battery Charge label (horizontal path y=150, label ABOVE at y=138) */}
+        {/* Battery Charge label */}
         {showBattery && batteryChargeW > 0 && batteryOn && (
-          <text
-            x={550} y={138}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontFamily="Inter, sans-serif"
-            className="pointer-events-none"
-          >
-            <tspan fill="#94A3B8" fontSize="10">{Math.round(batteryChargeW)}W</tspan>
-            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(batteryChargeW / 1000).toFixed(1)}kWh</tspan>
-            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(batteryChargeW / 1000 * 6.5)}/hr</tspan>
-          </text>
+          <g className="pointer-events-none">
+            <rect x={490} y={127} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <text x={550} y={138} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
+              <tspan fill="#34D399" fontSize="10" fontWeight="600">{Math.round(batteryChargeW)}W</tspan>
+              <tspan dx="5" fill="#6EE7B7" fontSize="9">{(batteryChargeW / 1000).toFixed(1)}kWh</tspan>
+              <tspan dx="5" fill="#FDE68A" fontSize="9">₹{Math.round(batteryChargeW / 1000 * 6.5)}/hr</tspan>
+            </text>
+          </g>
         )}
 
-        {/* Battery Discharge label (horizontal path y=154, label ABOVE at y=140 — mutually exclusive with charge) */}
+        {/* Battery Discharge label */}
         {showBattery && batteryDischargeW > 0 && batteryOn && (
-          <text
-            x={550} y={140}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontFamily="Inter, sans-serif"
-            className="pointer-events-none"
-          >
-            <tspan fill="#94A3B8" fontSize="10">{Math.round(batteryDischargeW)}W</tspan>
-            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(batteryDischargeW / 1000).toFixed(1)}kWh</tspan>
-            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(batteryDischargeW / 1000 * 6.5)}/hr</tspan>
-          </text>
+          <g className="pointer-events-none">
+            <rect x={490} y={129} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <text x={550} y={140} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
+              <tspan fill="#FB923C" fontSize="10" fontWeight="600">{Math.round(batteryDischargeW)}W</tspan>
+              <tspan dx="5" fill="#6EE7B7" fontSize="9">{(batteryDischargeW / 1000).toFixed(1)}kWh</tspan>
+              <tspan dx="5" fill="#FDE68A" fontSize="9">₹{Math.round(batteryDischargeW / 1000 * 6.5)}/hr</tspan>
+            </text>
+          </g>
         )}
 
-        {/* Load (Inverter→Ghar) label (bottom bypass path y=350, label ABOVE at y=337) */}
+        {/* Load (Inverter→Ghar) label */}
         {!systemOffline && loadW > 0 && !isOnGridOffline && (
-          <text
-            x={660} y={337}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fontFamily="Inter, sans-serif"
-            className="pointer-events-none"
-          >
-            <tspan fill="#94A3B8" fontSize="10">{Math.round(loadW)}W</tspan>
-            <tspan dx="6" fill="#6EE7B7" fontSize="9">{(loadW / 1000).toFixed(1)}kWh</tspan>
-            <tspan dx="6" fill="#FDE68A" fontSize="9">₹{Math.round(loadW / 1000 * 6.5)}/hr</tspan>
-          </text>
+          <g className="pointer-events-none">
+            <rect x={600} y={326} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" />
+            <text x={660} y={337} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
+              <tspan fill="#E2E8F0" fontSize="10" fontWeight="600">{Math.round(loadW)}W</tspan>
+              <tspan dx="5" fill="#6EE7B7" fontSize="9">{(loadW / 1000).toFixed(1)}kWh</tspan>
+              <tspan dx="5" fill="#FDE68A" fontSize="9">₹{Math.round(loadW / 1000 * 6.5)}/hr</tspan>
+            </text>
+          </g>
         )}
 
         {/* ── COMPONENT NODES ── */}
@@ -792,28 +815,43 @@ export function SchematicSVG() {
         </AnimatePresence>
 
         {/* COL-2 CENTER: Hybrid Inverter — cx=430, cy=150, no controls */}
-        <motion.g
-          initial={{ opacity: 0, scale: 0.7 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.3, duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
-        >
-          <ComponentNode
-            cx={430} cy={150}
-            label={
-              mode === "on-grid"
-                ? L(lang, "onGrid") + (lang === "en" ? " Inverter" : " इन्वर्टर")
-                : mode === "off-grid"
-                ? L(lang, "offGrid") + (lang === "en" ? " Inverter" : " इन्वर्टर")
-                : L(lang, "inverter")
-            }
-            subvalue={inverterOverload ? "OVERLOAD!" : `${(useSimStore.getState().inverterWatts / 1000).toFixed(1)} kW`}
-            iconType="zap"
-            glowColor={inverterOverload ? "#EF4444" : "#F1F5F9"}
-            isActive={!systemOffline}
-            danger={inverterOverload}
-            tooltip="DC→AC conversion. Handles all loads in your home."
-          />
-        </motion.g>
+        {/* AnimatePresence key on mode triggers a quick flash when mode switches */}
+        <AnimatePresence mode="wait">
+          <motion.g
+            key={`inverter-${mode}`}
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.85 }}
+            transition={{ duration: 0.35, ease: [0.34, 1.56, 0.64, 1] }}
+          >
+            {/* Mode-change flash ring */}
+            <motion.circle
+              cx={430} cy={150} r={38}
+              fill="none"
+              stroke={inverterOverload ? "#EF4444" : mode === "on-grid" ? "#3B82F6" : mode === "off-grid" ? "#22C55E" : "#06B6D4"}
+              strokeWidth={2}
+              initial={{ opacity: 0.9, r: 30 }}
+              animate={{ opacity: 0, r: 60 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+            />
+            <ComponentNode
+              cx={430} cy={150}
+              label={
+                mode === "on-grid"
+                  ? L(lang, "onGrid") + (lang === "en" ? " Inverter" : " इन्वर्टर")
+                  : mode === "off-grid"
+                  ? L(lang, "offGrid") + (lang === "en" ? " Inverter" : " इन्वर्टर")
+                  : L(lang, "inverter")
+              }
+              subvalue={inverterOverload ? "OVERLOAD!" : `${(useSimStore.getState().inverterWatts / 1000).toFixed(1)} kW`}
+              iconType="zap"
+              glowColor={inverterOverload ? "#EF4444" : mode === "on-grid" ? "#60A5FA" : mode === "off-grid" ? "#34D399" : "#22D3EE"}
+              isActive={!systemOffline}
+              danger={inverterOverload}
+              tooltip="DC→AC conversion. Handles all loads in your home."
+            />
+          </motion.g>
+        </AnimatePresence>
 
         {/* COL-3 CENTER: Battery — cx=670, cy=150, controlsHeight=90 */}
         <AnimatePresence mode="wait">
@@ -835,6 +873,7 @@ export function SchematicSVG() {
                 glowColor={batteryOn ? socColor : "#475569"}
                 isActive={batteryActive}
                 socPercent={batteryOn && useSimStore.getState().batteryKwh > 0 ? batterySoc : 0}
+                isCharging={batteryChargeW > 0 && batteryOn}
                 tooltip="Charges in the day, powers your home at night or during cuts."
                 controls={<BatteryNodeControls />}
                 controlsHeight={147}

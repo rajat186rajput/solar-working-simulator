@@ -42,10 +42,13 @@ export function DiagramLayout() {
       {/* Docked aside — only when pinned + open */}
       {showDockedPanel && (
         <aside
-          className="shrink-0 border-l border-surface-stroke overflow-y-auto"
+          className="shrink-0 overflow-y-auto"
           style={{
             width: 320,
-            background: "#0F172A",
+            background: "rgba(15, 23, 42, 0.85)",
+            backdropFilter: "blur(16px)",
+            WebkitBackdropFilter: "blur(16px)",
+            borderLeft: "1px solid rgba(255,255,255,0.08)",
           }}
         >
           <GharDrawerContents
