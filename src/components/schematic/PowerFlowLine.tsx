@@ -2,7 +2,6 @@
 
 import { motion } from "framer-motion";
 import type { FlowType } from "@/lib/types";
-import { calcStrokeWidth } from "@/lib/utils";
 
 const FLOW_COLORS: Record<FlowType, string> = {
   solar: "#F6C90E",
@@ -21,8 +20,9 @@ interface PowerFlowLineProps {
   gridFail?: boolean;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function PowerFlowLine({ pathD, powerW, flowType, isActive, gridFail }: PowerFlowLineProps) {
-  const strokeWidth = calcStrokeWidth(powerW);
+  const strokeWidth = 2.5;
   const color = gridFail && (flowType === "grid-import" || flowType === "grid-export")
     ? "#EF4444"
     : FLOW_COLORS[flowType];

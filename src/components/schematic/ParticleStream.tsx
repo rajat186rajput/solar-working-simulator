@@ -1,7 +1,6 @@
 "use client";
 
 import type { FlowType } from "@/lib/types";
-import { clamp } from "@/lib/utils";
 
 const FLOW_COLORS: Record<FlowType, string> = {
   solar: "#F6C90E",
@@ -26,14 +25,12 @@ export function ParticleStream({ pathD, powerW = 0, flowType, isActive }: Partic
 
   const safePowerW = Number.isFinite(powerW) ? powerW : 0;
   const color = FLOW_COLORS[flowType];
-  // FIX 6: duration proportional to watts — higher load = faster animation
+  // duration proportional to watts — higher load = faster animation (speed-only, size is fixed)
   const durationMs = Math.max(500, (3 - (safePowerW / 3000) * 2) * 1000);
-  const radius = clamp(2 + safePowerW / 3000, 2, 4);
-  const safeRadius = Number.isFinite(radius) ? radius : 2;
 
-  // Arrow size scales with particle radius: wider = more prominent
-  const arrowW = safeRadius * 2.5;   // tip-to-base length (forward direction)
-  const arrowH = safeRadius * 1.8;   // half-height of base
+  // Fixed arrow size — does NOT scale with load
+  const arrowW = 8;   // tip-to-base length (forward direction)
+  const arrowH = 8;   // half-height of base
 
   return (
     <>
