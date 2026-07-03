@@ -13,3 +13,4 @@ tsconfig.tsbuildinfo
 
 # Root-level build screenshots (dev artefacts)
 v*.png
+.vercel
