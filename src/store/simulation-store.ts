@@ -21,6 +21,7 @@ interface SimStore extends SimState {
   toggleBattery: () => void;
   setPanelKwp: (kwp: number) => void;
   toggleSolar: () => void;
+  setInverterWatts: (watts: number) => void;
   setApplianceQty: (id: string, qty: number) => void;
   toggleGridOnly: (id: string) => void;
   activateScenario: (scenario: ScenarioPreset) => void;
@@ -250,6 +251,13 @@ export const useSimStore = create<SimStore>((set, get) => ({
       const solarOn = !s.solarOn;
       const next = { ...s, solarOn };
       return { solarOn, ...computeState(next) } as Partial<SimStore>;
+    });
+  },
+
+  setInverterWatts(inverterWatts) {
+    set((s) => {
+      const next = { ...s, inverterWatts };
+      return { inverterWatts, ...computeState(next) } as Partial<SimStore>;
     });
   },
 

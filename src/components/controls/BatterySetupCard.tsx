@@ -145,7 +145,16 @@ export function BatterySetupCard() {
         {isNoneActive
           ? "No battery — solar/grid only"
           : batteryOn
-            ? `${batteryKwh} kWh ${batteryType === "lifepo4" ? "LFP" : "PbA"} — usable ~${(batteryKwh * (batteryType === "lifepo4" ? 0.9 : 0.5)).toFixed(1)} kWh`
+            ? (() => {
+                // DoD × inverter-eff usable model (mirrors simulation.ts)
+                const DOD = batteryType === "lifepo4" ? 0.90 : 0.50;
+                const INVERTER_EFF = 0.95;
+                const voltage = batteryType === "lifepo4" ? 51.2 : 48;
+                const ah = Math.round((batteryKwh * 1000) / voltage);
+                const usable = (batteryKwh * DOD * INVERTER_EFF).toFixed(1);
+                const bankNote = batteryType === "lead-acid" ? `4×${ah}Ah@12V` : `${ah}Ah@${voltage}V`;
+                return `${batteryKwh} kWh ${batteryType === "lifepo4" ? "LFP" : "PbA"} (${bankNote}) — usable ~${usable} kWh @ ${Math.round(DOD * 100)}% DoD`;
+              })()
             : "Battery disconnected — no charge/discharge"}
       </div>
     </div>

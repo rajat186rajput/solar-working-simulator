@@ -7,6 +7,7 @@ import { useSimStore } from "@/store/simulation-store";
 
 const SOLAR_PRESETS: { label: string; kwp: number }[] = [
   { label: "2 kWp",   kwp: 2   },
+  { label: "3.6 kWp", kwp: 3.6 },
   { label: "4.4 kWp", kwp: 4.4 },
   { label: "5 kWp",   kwp: 5   },
   { label: "7 kWp",   kwp: 7   },

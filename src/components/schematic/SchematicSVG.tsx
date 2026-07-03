@@ -45,16 +45,26 @@ const PATHS = {
 // ─── Solar capacity presets ────────────────────────────────────────────────
 const SOLAR_KWP_OPTIONS = [
   { label: "2 kWp",   kwp: 2   },
+  { label: "3.6 kWp", kwp: 3.6 },
   { label: "4.4 kWp", kwp: 4.4 },
   { label: "5 kWp",   kwp: 5   },
   { label: "7 kWp",   kwp: 7   },
   { label: "10 kWp",  kwp: 10  },
 ];
 
+// ─── Inverter capacity presets (watts) ─────────────────────────────────────
+const INVERTER_W_OPTIONS = [
+  { label: "3 kW",   watts: 3000  },
+  { label: "5 kW",   watts: 5000  },
+  { label: "6.2 kW", watts: 6200  },
+  { label: "10 kW",  watts: 10000 },
+];
+
 // ─── Battery capacity presets ──────────────────────────────────────────────
+// 7.2 kWh = a real 4×150Ah@12V lead-acid bank in series (48V × 150Ah ÷ 1000)
 const BATTERY_KWH_OPTIONS = [
   { label: "5 kWh",   kwh: 5   },
-  { label: "7.5 kWh", kwh: 7.5 },
+  { label: "7.2 kWh", kwh: 7.2 },
   { label: "10 kWh",  kwh: 10  },
   { label: "15 kWh",  kwh: 15  },
   { label: "20 kWh",  kwh: 20  },
@@ -176,6 +186,11 @@ const C_RATE: Record<"lifepo4" | "lead-acid", number> = {
   lifepo4: 0.5,
   "lead-acid": 0.2,
 };
+// Nameplate bank voltage (same as simulation.ts) — used to derive Ah from kWh
+const VOLTAGE: Record<"lifepo4" | "lead-acid", number> = {
+  lifepo4: 51.2,
+  "lead-acid": 48,
+};
 const INVERTER_EFF = 0.95;
 
 // ─── Format hours → "2h 15m" or "45m" ───────────────────────────────────
@@ -240,6 +255,18 @@ function BatteryNodeControls() {
   } else {
     timeEstimate = L(lang, "idle");
   }
+
+  // Ah → kWh relatable breakdown (mirrors simulation.ts DOD × inverter-eff usable model)
+  const bankVoltage = VOLTAGE[batteryType];
+  const bankAh = Math.round((batteryKwh * 1000) / bankVoltage);
+  const usableKwh = usableWh / 1000;
+  const dodPct = Math.round(DOD_FACTOR[batteryType] * 100);
+  const ahBreakdown = batteryKwh > 0
+    ? batteryType === "lead-acid"
+      // 48V lead-acid bank = 4 × 12V batteries in series, so bank Ah = single-battery Ah
+      ? `${batteryKwh} kWh = 4×${bankAh}Ah@12V — usable ~${usableKwh.toFixed(1)} kWh @ ${dodPct}% DoD`
+      : `${batteryKwh} kWh = ${bankAh}Ah@${bankVoltage}V LFP — usable ~${usableKwh.toFixed(1)} kWh @ ${dodPct}% DoD`
+    : "";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "4px 2px 0", height: "100%" }}>
@@ -349,6 +376,13 @@ function BatteryNodeControls() {
         ))}
       </select>
 
+      {/* Ah → kWh relatable breakdown */}
+      {ahBreakdown && (
+        <div style={{ fontSize: 9, color: "#64748B", lineHeight: 1.25 }}>
+          {ahBreakdown}
+        </div>
+      )}
+
     </div>
   );
 }
@@ -374,6 +408,34 @@ function GridNodeControls() {
           {mode === "on-grid" ? "Solar bhi band" : "Battery backup"}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Inverter node controls — capacity selector (always-on, no switch) ──────
+function InverterNodeControls() {
+  const { inverterWatts, setInverterWatts, gridAvailable, mode } = useSimStore();
+
+  // Overload only bites when grid can't backstop (off-grid, or grid-fail in hybrid/on-grid)
+  const gridCanBackstop = gridAvailable && (mode === "on-grid" || mode === "hybrid");
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "4px 2px 0", height: "100%" }}>
+      <select
+        value={inverterWatts}
+        onChange={(e) => setInverterWatts(Number(e.target.value))}
+        style={SELECT_STYLE}
+        aria-label="Inverter rated capacity"
+      >
+        {INVERTER_W_OPTIONS.map((o) => (
+          <option key={o.watts} value={o.watts}>{o.label}</option>
+        ))}
+      </select>
+      <div style={{ fontSize: 9, color: "#64748B", lineHeight: 1.25 }}>
+        {gridCanBackstop
+          ? "Rated capacity — grid backs up any overload"
+          : `Load above ${(inverterWatts / 1000).toFixed(1)} kW trips it (no grid backstop)`}
+      </div>
     </div>
   );
 }
@@ -845,7 +907,7 @@ export function SchematicSVG({
           )}
         </AnimatePresence>
 
-        {/* COL-2 CENTER: Hybrid Inverter — cx=430, cy=150, no controls */}
+        {/* COL-2 CENTER: Hybrid Inverter — cx=430, cy=150, controlsHeight=40 */}
         {/* AnimatePresence key on mode triggers a quick flash when mode switches */}
         <AnimatePresence mode="wait">
           <motion.g
@@ -880,6 +942,8 @@ export function SchematicSVG({
               isActive={!systemOffline}
               danger={inverterOverload}
               tooltip="DC→AC conversion. Handles all loads in your home."
+              controls={<InverterNodeControls />}
+              controlsHeight={40}
             />
           </motion.g>
         </AnimatePresence>
@@ -907,7 +971,7 @@ export function SchematicSVG({
                 isCharging={batteryChargeW > 0 && batteryOn}
                 tooltip="Charges in the day, powers your home at night or during cuts."
                 controls={<BatteryNodeControls />}
-                controlsHeight={147}
+                controlsHeight={162}
               />
             </motion.g>
           )}
