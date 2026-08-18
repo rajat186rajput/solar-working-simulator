@@ -162,13 +162,16 @@ function CompactToggle({
 }
 
 // ─── Solar node controls (FIX 3 + FIX 5 + FIX 8) ─────────────────────────
-function SolarNodeControls() {
+function SolarNodeControls({ isMobile = false }: { isMobile?: boolean }) {
   const { solarOn, toggleSolar, panelKwp, setPanelKwp, lang, simView, curtailedW, netMeterInstalled } = useSimStore();
   const isRealSetup = simView === "real-setup";
   // LEAD-2 (code review): surplus solar that's neither served, charged, nor
   // exported is silently wasted — surface it here instead of letting it
   // vanish from the numbers.
-  const showCurtailed = isRealSetup && curtailedW > 1;
+  // GATE-1 mobile: the curtailment story is fully carried by the ticker on
+  // mobile (see RealSetupTicker) — the node card only has room for the
+  // toggle + capacity line at the tiny effective on-screen text size.
+  const showCurtailed = isRealSetup && curtailedW > 1 && !isMobile;
 
   return (
     <div
@@ -207,16 +210,32 @@ function SolarNodeControls() {
         </select>
       )}
 
-      {/* Info line */}
-      <div style={{ fontSize: 10, color: solarOn ? "#F6C90E88" : "#47556977", lineHeight: 1 }}>
-        {solarOn ? `~${(panelKwp * 4.5).toFixed(0)} kWh/day` : "Disconnected"}
-      </div>
+      {/* Info line — hidden on mobile Real Setup to hold the max-2-line
+          budget (the array size is already in the System Nameplate panel). */}
+      {!(isMobile && isRealSetup) && (
+        <div style={{ fontSize: 10, color: solarOn ? "#F6C90E88" : "#47556977", lineHeight: 1 }}>
+          {solarOn ? `~${(panelKwp * 4.5).toFixed(0)} kWh/day` : "Disconnected"}
+        </div>
+      )}
 
-      {/* Curtailment chip (LEAD-2) — only when solar is actually being wasted */}
+      {/* Curtailment pill (LEAD-2 / GATE-1) — compact single line so it never
+          wraps or touches the card border; the full "why" (enable net-meter
+          to export) is a title tooltip here + surfaced in the ticker instead
+          of being crammed into the node card. */}
       {showCurtailed && (
-        <div style={{ fontSize: 9, color: "#FB923C", lineHeight: 1.2, fontWeight: 600 }}>
-          {L(lang, "curtailedChip")}: {(curtailedW / 1000).toFixed(2)} kW
-          {!netMeterInstalled ? ` — ${L(lang, "curtailedHint")}` : ""}
+        <div
+          title={!netMeterInstalled ? L(lang, "curtailedHint") : undefined}
+          style={{
+            fontSize: 10,
+            color: "#FB923C",
+            lineHeight: 1,
+            fontWeight: 600,
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+        >
+          ⚠ {(curtailedW / 1000).toFixed(2)} kW {L(lang, "curtailedChip").toLowerCase()}
         </div>
       )}
     </div>
@@ -249,7 +268,7 @@ function fmtHours(h: number): string {
 }
 
 // ─── Battery node controls (FIX 4 + FIX 5 + FIX 10 + SoC slider) ────────
-function BatteryNodeControls() {
+function BatteryNodeControls({ isMobile = false }: { isMobile?: boolean }) {
   const {
     batteryKwh, setBatteryKwh,
     batteryType, setBatteryType,
@@ -321,23 +340,30 @@ function BatteryNodeControls() {
   const bankAh = Math.round((batteryKwh * 1000) / bankVoltage);
   const usableKwh = usableWh / 1000;
   const dodPct = Math.round(DOD_FACTOR[batteryType] * 100);
-  // BATTERY COPY (code review): "usable ~3.2 kWh" was ambiguous — that figure
-  // already folds in the 90% PCU efficiency on top of the 50% DoD (7.2 × 0.5
-  // = 3.6 kWh @ DoD, × 0.90 PCU eff ≈ 3.2 kWh actually deliverable as AC). In
-  // Real Setup, spell out both numbers so it can't be misread against the
-  // System Nameplate's "~3.6 kWh (50% DoD)" figure (that one is pre-efficiency).
-  const dodKwh = (batteryKwh * DOD_FACTOR[batteryType]).toFixed(1);
+  // BATTERY COPY (code review) + GATE-1 (Rajat: text overflowed below the
+  // card): "usable ~3.2 kWh" was ambiguous — that figure already folds in
+  // the 90% PCU efficiency on top of the 50% DoD (7.2 × 0.5 = 3.6 kWh @ DoD,
+  // × 0.90 PCU eff ≈ 3.2 kWh deliverable as AC). Real Setup spells this out
+  // so it can't be misread against the System Nameplate's pre-efficiency
+  // "~3.6 kWh (50% DoD)" figure — but as ONE line it overflowed the card, so
+  // it's now split into two short lines instead of being lengthened further.
   const effPct = Math.round(effInUse * 100);
-  const ahBreakdown = batteryKwh > 0
-    ? batteryType === "lead-acid"
+  const ahBreakdownLines: string[] = batteryKwh <= 0
+    ? []
+    : batteryType === "lead-acid"
       // 48V lead-acid bank = 4 × 12V batteries in series, so bank Ah = single-battery Ah
       ? isRealSetup
         ? lang === "hi"
-          ? `${batteryKwh} kWh = 4×${bankAh}Ah@12V — ≈${usableKwh.toFixed(1)} kWh डिलीवरेबल AC (${dodKwh} kWh @ ${dodPct}% DoD × ${effPct}%)`
-          : `${batteryKwh} kWh = 4×${bankAh}Ah@12V — ≈${usableKwh.toFixed(1)} kWh deliverable AC (${dodKwh} kWh @ ${dodPct}% DoD × ${effPct}%)`
-        : `${batteryKwh} kWh = 4×${bankAh}Ah@12V — usable ~${usableKwh.toFixed(1)} kWh @ ${dodPct}% DoD`
-      : `${batteryKwh} kWh = ${bankAh}Ah@${bankVoltage}V LFP — usable ~${usableKwh.toFixed(1)} kWh @ ${dodPct}% DoD`
-    : "";
+          ? [
+              `${batteryKwh} kWh · 4×${bankAh} Ah लेड-एसिड`,
+              `≈${usableKwh.toFixed(1)} kWh उपयोग AC (${dodPct}% DoD × ${effPct}%)`,
+            ]
+          : [
+              `${batteryKwh} kWh · 4×${bankAh} Ah lead-acid`,
+              `≈${usableKwh.toFixed(1)} kWh usable AC (${dodPct}% DoD × ${effPct}%)`,
+            ]
+        : [`${batteryKwh} kWh = 4×${bankAh}Ah@12V — usable ~${usableKwh.toFixed(1)} kWh @ ${dodPct}% DoD`]
+      : [`${batteryKwh} kWh = ${bankAh}Ah@${bankVoltage}V LFP — usable ~${usableKwh.toFixed(1)} kWh @ ${dodPct}% DoD`];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "4px 2px 0", height: "100%" }}>
@@ -378,55 +404,72 @@ function BatteryNodeControls() {
             {socLocked ? L(lang, "manual") : L(lang, "auto")}
           </span>
         </div>
-        {/* Visual gradient bar — read-only SoC display */}
+        {/* GATE-1 (Rajat: "battery wale box me extra bar hai") — the gradient
+            display bar and the native range-input track used to stack as TWO
+            visible bars. Now a single track: the gradient div is the visual
+            fill, the range input is absolutely overlaid on top with its own
+            track made transparent (.soc-overlay-slider in globals.css) so
+            only its thumb renders — one bar, still keyboard-accessible. */}
         {(() => {
           const barColor = batterySoc > 0.6 ? '#22c55e' : batterySoc > 0.3 ? '#eab308' : '#ef4444';
           return (
-            <div style={{
-              width: '100%',
-              height: '6px',
-              borderRadius: '3px',
-              background: `linear-gradient(to right,
-                ${barColor} 0%,
-                ${barColor} ${batterySoc * 100}%,
-                rgba(255,255,255,0.1) ${batterySoc * 100}%,
-                rgba(255,255,255,0.1) 100%)`,
-              marginBottom: '4px',
-              opacity: batteryOn && batteryKwh > 0 ? 1 : 0.4,
-            }} />
+            <div style={{ position: "relative", width: "100%", height: "12px", marginBottom: "4px" }}>
+              <div style={{
+                position: "absolute",
+                left: 0, right: 0, top: "3px",
+                height: '6px',
+                borderRadius: '3px',
+                background: `linear-gradient(to right,
+                  ${barColor} 0%,
+                  ${barColor} ${batterySoc * 100}%,
+                  rgba(255,255,255,0.1) ${batterySoc * 100}%,
+                  rgba(255,255,255,0.1) 100%)`,
+                opacity: batteryOn && batteryKwh > 0 ? 1 : 0.4,
+              }} />
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round(batterySoc * 100)}
+                onChange={(e) => {
+                  setBatterySoc(Number(e.target.value) / 100);
+                  setSocLocked(true);
+                }}
+                disabled={!batteryOn || batteryKwh <= 0}
+                aria-label="Battery state of charge"
+                className="soc-overlay-slider"
+                style={{
+                  position: "absolute",
+                  left: 0, right: 0, top: 0,
+                  width: "100%",
+                  height: "12px",
+                  margin: 0,
+                  cursor: batteryOn && batteryKwh > 0 ? "pointer" : "default",
+                  opacity: batteryOn && batteryKwh > 0 ? 1 : 0.4,
+                  ["--soc-thumb-color" as string]: socColor,
+                } as React.CSSProperties}
+              />
+            </div>
           );
         })()}
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={1}
-          value={Math.round(batterySoc * 100)}
-          onChange={(e) => {
-            setBatterySoc(Number(e.target.value) / 100);
-            setSocLocked(true);
-          }}
-          disabled={!batteryOn || batteryKwh <= 0}
-          aria-label="Battery state of charge"
-          style={{
-            width: "100%",
-            height: 6,
-            accentColor: socColor,
-            cursor: batteryOn && batteryKwh > 0 ? "pointer" : "default",
-            opacity: batteryOn && batteryKwh > 0 ? 1 : 0.4,
-          }}
-        />
-        {/* Time estimate */}
-        <div style={{ fontSize: 10, color: "#94A3B8", lineHeight: 1.2 }}>
-          {batteryOn && batteryKwh > 0 ? timeEstimate : "— No battery"}
-        </div>
+        {/* Time estimate — hidden on mobile Real Setup (GATE-1 max-2-line budget) */}
+        {!(isMobile && isRealSetup) && (
+          <div style={{ fontSize: 10, color: "#94A3B8", lineHeight: 1.2 }}>
+            {batteryOn && batteryKwh > 0 ? timeEstimate : "— No battery"}
+          </div>
+        )}
       </div>
 
-      {/* Capacity + chemistry — fixed as-built nameplate in Real Setup, editable in Learn */}
+      {/* Capacity + chemistry — fixed as-built nameplate in Real Setup, editable
+          in Learn. Hidden on mobile Real Setup — the exact same bank spec is
+          already in the System Nameplate panel below the diagram. */}
       {isRealSetup ? (
-        <div style={{ ...SELECT_STYLE, cursor: "default" }}>
-          {batteryKwh} kWh — {NAMEPLATE.battery.name}
-        </div>
+        !isMobile && (
+          <div style={{ ...SELECT_STYLE, cursor: "default" }}>
+            {batteryKwh} kWh — {NAMEPLATE.battery.name}
+          </div>
+        )
       ) : (
         <>
           <select
@@ -454,10 +497,14 @@ function BatteryNodeControls() {
         </>
       )}
 
-      {/* Ah → kWh relatable breakdown */}
-      {ahBreakdown && (
-        <div style={{ fontSize: 9, color: "#64748B", lineHeight: 1.25 }}>
-          {ahBreakdown}
+      {/* Ah → kWh relatable breakdown — max 2 short lines, sized to fit the
+          card. Hidden on mobile Real Setup — same numbers live in the
+          System Nameplate panel below the diagram (GATE-1 max-2-line budget). */}
+      {ahBreakdownLines.length > 0 && !(isMobile && isRealSetup) && (
+        <div style={{ fontSize: 10, color: "#64748B", lineHeight: 1.3 }}>
+          {ahBreakdownLines.map((line, i) => (
+            <div key={i}>{line}</div>
+          ))}
         </div>
       )}
 
@@ -492,7 +539,7 @@ function GridNodeControls() {
 }
 
 // ─── Inverter node controls — capacity selector (always-on, no switch) ──────
-function InverterNodeControls() {
+function InverterNodeControls({ isMobile = false }: { isMobile?: boolean }) {
   const { inverterWatts, setInverterWatts, gridAvailable, mode, simView, pcuMode, overloadBand, lang } = useSimStore();
 
   if (simView === "real-setup") {
@@ -502,20 +549,32 @@ function InverterNodeControls() {
         <div style={{ ...SELECT_STYLE, cursor: "default" }}>
           {PCU_MODE_BADGE[pcuMode]} — {(PCU_CAP_W / 1000).toFixed(1)} kW {L(lang, "nameplateBatteryModeCap").toLowerCase()}
         </div>
-        <div style={{ fontSize: 9, color: overloadBand !== "none" ? "#EF4444" : "#64748B", lineHeight: 1.25 }}>
-          {overloadBand === "none"
-            ? `UGE5048 — ${NAMEPLATE.pcu.mainsRating}, ${NAMEPLATE.pcu.efficiency} ${L(lang, "effAbbrev")}`
-            : overloadBand === "amber"
-              ? L(lang, "overloadAmber")
-              : L(lang, "overloadRed")}
-        </div>
-        <div style={{ fontSize: 9, color: "#475569", lineHeight: 1.25 }}>
-          {chain.day
-            ? `${L(lang, "pcuModeSMARTDay").split(":")[0]} ${chain.day.join("→")} · ${L(lang, "pcuModeSMARTNight").split(":")[0]} ${(chain.night ?? []).join("→")}`
-            : chain.charge
-              ? `${L(lang, "pcuModeHYBRIDLoad").split(":")[0]} ${chain.load.join("→")} · ${L(lang, "pcuModeHYBRIDCharge").split(":")[0]} ${chain.charge.join("→")}`
-              : chain.load.join(" → ")}
-        </div>
+        {/* GATE-1 mobile (Rajat: node text unreadable at 375px — the SVG's
+            foreignObject text is scaled DOWN by the viewBox-to-viewport
+            ratio, ~0.375× at 375px vs ~1.44× at desktop 1440px, so a "9px"
+            style here renders ~3px on screen). Only show the overload alert
+            (safety-critical) on mobile; the efficiency line is already
+            duplicated in the System Nameplate panel below the diagram. */}
+        {(!isMobile || overloadBand !== "none") && (
+          <div style={{ fontSize: 10, color: overloadBand !== "none" ? "#EF4444" : "#64748B", lineHeight: 1.25 }}>
+            {overloadBand === "none"
+              ? `UGE5048 — ${NAMEPLATE.pcu.mainsRating}, ${NAMEPLATE.pcu.efficiency} ${L(lang, "effAbbrev")}`
+              : overloadBand === "amber"
+                ? L(lang, "overloadAmber")
+                : L(lang, "overloadRed")}
+          </div>
+        )}
+        {/* Priority-chain line — also shown per-mode in the ModeSidebar chips;
+            dropped on mobile to stay within the max-2-secondary-lines budget. */}
+        {!isMobile && (
+          <div style={{ fontSize: 10, color: "#475569", lineHeight: 1.25 }}>
+            {chain.day
+              ? `${L(lang, "pcuModeSMARTDay").split(":")[0]} ${chain.day.join("→")} · ${L(lang, "pcuModeSMARTNight").split(":")[0]} ${(chain.night ?? []).join("→")}`
+              : chain.charge
+                ? `${L(lang, "pcuModeHYBRIDLoad").split(":")[0]} ${chain.load.join("→")} · ${L(lang, "pcuModeHYBRIDCharge").split(":")[0]} ${chain.charge.join("→")}`
+                : chain.load.join(" → ")}
+          </div>
+        )}
       </div>
     );
   }
@@ -907,7 +966,7 @@ export function SchematicSVG({
 
         {/* Solar → Inverter label (bezier midpoint ≈ 293,118, label ABOVE at y=104) */}
         {effectiveSolarW > 0 && !isOnGridOffline && solarOn && (
-          <g className="pointer-events-none">
+          <g className="pointer-events-none" data-flow-label="true">
             <rect x={233} y={93} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#F6C90E" strokeWidth={0.5} />
             <text x={293} y={104} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#F6C90E" fontSize="10" fontWeight="600">{Math.round(effectiveSolarW)}W</tspan>
@@ -919,7 +978,7 @@ export function SchematicSVG({
 
         {/* Grid Import label */}
         {showGrid && gridImportW > 0 && gridAvailable && (
-          <g className="pointer-events-none">
+          <g className="pointer-events-none" data-flow-label="true">
             <rect x={233} y={183} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#3B82F6" strokeWidth={0.5} />
             <text x={293} y={194} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#60A5FA" fontSize="10" fontWeight="600">{Math.round(gridImportW)}W</tspan>
@@ -931,7 +990,7 @@ export function SchematicSVG({
 
         {/* Grid Export label */}
         {showGrid && gridExportW > 0 && gridAvailable && (
-          <g className="pointer-events-none">
+          <g className="pointer-events-none" data-flow-label="true">
             <rect x={233} y={183} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#A855F7" strokeWidth={0.5} />
             <text x={293} y={194} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#C084FC" fontSize="10" fontWeight="600">{Math.round(gridExportW)}W</tspan>
@@ -941,33 +1000,36 @@ export function SchematicSVG({
           </g>
         )}
 
-        {/* Battery Charge label */}
+        {/* Battery Charge label — GATE-1: the inverter↔battery gap is only
+            90px (x:505→595), but this label reused the same 120px-wide rect
+            as the long diagonal flows, so it always overlapped both node
+            rects. Shrunk to 80px (x:510→590, 5px clearance each side) and
+            dropped the ₹/hr tspan (redundant — same total cost is already on
+            the Load label) so the remaining two tspans still fit comfortably. */}
         {showBattery && batteryChargeW > 0 && batteryOn && (
-          <g className="pointer-events-none">
-            <rect x={490} y={127} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#22C55E" strokeWidth={0.5} />
-            <text x={550} y={138} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
-              <tspan fill="#34D399" fontSize="10" fontWeight="600">{Math.round(batteryChargeW)}W</tspan>
-              <tspan dx="5" fill="#6EE7B7" fontSize="9">{(batteryChargeW / 1000).toFixed(1)}kWh</tspan>
-              <tspan dx="5" fill="#FDE68A" fontSize="9">₹{Math.round(batteryChargeW / 1000 * 6.5)}/hr</tspan>
+          <g className="pointer-events-none" data-flow-label="true">
+            <rect x={510} y={127} width={80} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#22C55E" strokeWidth={0.5} />
+            <text x={550} y={135} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
+              <tspan fill="#34D399" fontSize="9" fontWeight="600">{Math.round(batteryChargeW)}W</tspan>
+              <tspan dx="4" fill="#6EE7B7" fontSize="8">{(batteryChargeW / 1000).toFixed(1)}kWh</tspan>
             </text>
           </g>
         )}
 
-        {/* Battery Discharge label */}
+        {/* Battery Discharge label — same shrink as Battery Charge above. */}
         {showBattery && batteryDischargeW > 0 && batteryOn && (
-          <g className="pointer-events-none">
-            <rect x={490} y={129} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#F97316" strokeWidth={0.5} />
-            <text x={550} y={140} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
-              <tspan fill="#FB923C" fontSize="10" fontWeight="600">{Math.round(batteryDischargeW)}W</tspan>
-              <tspan dx="5" fill="#6EE7B7" fontSize="9">{(batteryDischargeW / 1000).toFixed(1)}kWh</tspan>
-              <tspan dx="5" fill="#FDE68A" fontSize="9">₹{Math.round(batteryDischargeW / 1000 * 6.5)}/hr</tspan>
+          <g className="pointer-events-none" data-flow-label="true">
+            <rect x={510} y={127} width={80} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#F97316" strokeWidth={0.5} />
+            <text x={550} y={135} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
+              <tspan fill="#FB923C" fontSize="9" fontWeight="600">{Math.round(batteryDischargeW)}W</tspan>
+              <tspan dx="4" fill="#6EE7B7" fontSize="8">{(batteryDischargeW / 1000).toFixed(1)}kWh</tspan>
             </text>
           </g>
         )}
 
         {/* Load (Inverter→Ghar) label */}
         {!systemOffline && loadW > 0 && !isOnGridOffline && (
-          <g className="pointer-events-none">
+          <g className="pointer-events-none" data-flow-label="true">
             <rect x={600} y={326} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#F8FAFC" strokeWidth={0.5} />
             <text x={660} y={337} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#E2E8F0" fontSize="10" fontWeight="600">{Math.round(loadW)}W</tspan>
@@ -997,7 +1059,7 @@ export function SchematicSVG({
             isActive={effectiveSolarW > 0 && !isOnGridOffline && solarOn}
             badge={isRealSetup ? `8×600W` : undefined}
             tooltip="Suraj ki roshni → bijli. Jitni dhoop, utni bijli."
-            controls={<SolarNodeControls />}
+            controls={<SolarNodeControls isMobile={isMobile} />}
             controlsHeight={94}
           />
         </motion.g>
@@ -1052,6 +1114,10 @@ export function SchematicSVG({
               animate={{ opacity: 0, r: 60 }}
               transition={{ duration: 0.6, ease: "easeOut" }}
             />
+            {/* GATE-1 (Rajat: "SMART" pill overlapped the border) — the
+                `badge` prop is dropped entirely rather than repositioned:
+                the label below already reads "UGE5048 — SMART", so the
+                corner badge was pure duplication, not new information. */}
             <ComponentNode
               cx={430} cy={150}
               label={
@@ -1076,10 +1142,14 @@ export function SchematicSVG({
               }
               isActive={!systemOffline}
               danger={isRealSetup ? pcuTripped : inverterOverload}
-              badge={isRealSetup ? PCU_MODE_BADGE[pcuMode] : undefined}
               tooltip="DC→AC conversion. Handles all loads in your home."
-              controls={<InverterNodeControls />}
-              controlsHeight={isRealSetup ? 46 : 40}
+              controls={<InverterNodeControls isMobile={isMobile} />}
+              // GATE-1 overlap-check (c): both branches of InverterNodeControls
+              // were overflowing their foreignObject — Learn needed ~57px
+              // (had 34), Real Setup desktop (3 lines) needed ~96px (had 40).
+              // Bumped with margin; mobile Real Setup only renders 1-2 lines
+              // so this is headroom there, not tight.
+              controlsHeight={isRealSetup ? 108 : 60}
             />
           </motion.g>
         </AnimatePresence>
@@ -1106,8 +1176,11 @@ export function SchematicSVG({
                 socPercent={batteryOn && useSimStore.getState().batteryKwh > 0 ? batterySoc : 0}
                 isCharging={batteryChargeW > 0 && batteryOn}
                 tooltip="Charges in the day, powers your home at night or during cuts."
-                controls={<BatteryNodeControls />}
-                controlsHeight={162}
+                controls={<BatteryNodeControls isMobile={isMobile} />}
+                // GATE-1 overlap-check (c): BatteryNodeControls was
+                // overflowing its foreignObject by ~10px in both modes
+                // (166/168 needed vs 156 available) — bumped with margin.
+                controlsHeight={180}
               />
             </motion.g>
           )}
@@ -1162,18 +1235,26 @@ export function SchematicSVG({
                       : `${L(lang, "overloadRed")}${overloadRemainingSec !== null ? ` (${overloadRemainingSec}s)` : ""}`)
                   : `~${(loadW / 1000).toFixed(2)}kWh | ${fmtRs((loadW / 1000) * 6.50)}${L(lang, "perHour")}`}
           </text>
-          {/* Tap hint — below node */}
-          <text
-            x={890} y={193}
-            textAnchor="middle"
-            dominantBaseline="middle"
-            fill="#475569"
-            fontSize="9"
-            fontFamily="Inter, sans-serif"
-            className="pointer-events-none select-none"
-          >
-            ☰ Appliances
-          </text>
+          {/* Tap hint — below node. GATE-1 (Rajat: "ghost text under the card
+              overlaps the load line"): this sits directly on the vertical
+              run of the Inverter→Ghar flow path (x=890, y:185→350), so the
+              animated chevrons visually cut through the bare text. A small
+              opaque backdrop pill (same idiom as the flow-watt labels)
+              occludes the line behind it instead of fighting it — fixes
+              both Learn and Real Setup since this markup isn't mode-gated. */}
+          <g className="pointer-events-none select-none" data-flow-label="true">
+            <rect x={890 - 40} y={193 - 7} width={80} height={16} rx={8} fill="rgba(15,23,42,0.80)" />
+            <text
+              x={890} y={193}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fill="#64748B"
+              fontSize="9"
+              fontFamily="Inter, sans-serif"
+            >
+              ☰ Appliances
+            </text>
+          </g>
         </motion.g>
 
         {/* On-Grid grid-fail blackout overlay */}

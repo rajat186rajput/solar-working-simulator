@@ -101,6 +101,7 @@ export const LABELS = {
   effAbbrev:           { en: "eff.", hi: "दक्षता" },
   curtailedChip:       { en: "Curtailed", hi: "बर्बाद" },
   curtailedHint:       { en: "enable net-meter to export", hi: "एक्सपोर्ट के लिए नेट-मीटर चालू करें" },
+  sidebarHint:         { en: "◀ Connections & modes", hi: "◀ कनेक्शन व मोड" },
 
   ruleGeyser:  { en: "Geyser rule: switch AC off before geyser on — never together.", hi: "गीज़र नियम: गीज़र ऑन करने से पहले AC बंद करें — साथ में कभी नहीं।" },
   ruleEV:      { en: "EV rule: never charge the EV during a power cut — battery empties in 1–2 hrs.", hi: "EV नियम: बिजली कटने पर EV चार्ज न करें — बैटरी 1–2 घंटे में खाली हो जाएगी।" },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Lock } from "lucide-react";
 import { useSimStore } from "@/store/simulation-store";
@@ -206,14 +206,60 @@ function NetMeterToggle() {
 export function ModeSidebar() {
   const { mode, setMode, simView, lang } = useSimStore();
   const [open, setOpen] = useState(false);
+  // GATE-1 item 7 (discoverability): first-ever entry into Real Setup on
+  // desktop auto-opens this sidebar once so the Connection cards / PCU-mode
+  // chips / net-meter toggle are visible without the user having to notice
+  // the thin collapsed handle. autoOpenedRef guards it to a single fire per
+  // session (not on every simView flip back and forth).
+  //
+  // The sidebar is a FIXED overlay (not a layout sibling that pushes
+  // content) — left open, it permanently hides the Solar/Grid nodes behind
+  // it, which defeats the point of a diagram demo. So it auto-CLOSES again
+  // after a few seconds: enough to register "oh, there's a panel here" plus
+  // read the Connection/PCU-mode/net-meter controls, without permanently
+  // blocking the schematic. autoCloseTimerRef lets a manual toggle during
+  // that window cancel the pending auto-close instead of fighting the user.
+  const autoOpenedRef = useRef(false);
+  const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (simView !== "real-setup" || autoOpenedRef.current) return;
+    autoOpenedRef.current = true;
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+      setOpen(true);
+      autoCloseTimerRef.current = setTimeout(() => setOpen(false), 4000);
+    }
+    return () => {
+      if (autoCloseTimerRef.current) clearTimeout(autoCloseTimerRef.current);
+    };
+  }, [simView]);
+
+  const handleToggle = () => {
+    if (autoCloseTimerRef.current) {
+      clearTimeout(autoCloseTimerRef.current);
+      autoCloseTimerRef.current = null;
+    }
+    setOpen((v) => !v);
+  };
 
   return (
     <>
-      {/* ── Toggle tab (fixed, left-center) ── */}
+      {/* ── Toggle tab (fixed, left-center) ──
+          GATE-1 item 7 — a floating text label next to this handle was
+          tried first, but at every viewport height that label's fixed
+          top-1/2 position could land on top of the Solar/Grid node cards
+          (confirmed by measuring getBoundingClientRect overlap directly —
+          the diagram's own vertical position shifts with header/ticker
+          chrome height, so no single fixed offset was safe everywhere).
+          A native `title` tooltip renders in the browser's own overlay
+          layer — it can never collide with page content — and the small
+          pulsing dot is confined to the 20px-wide handle itself, nowhere
+          near any node's card (cards start at x≈38px+). */}
       <button
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleToggle}
         aria-label={open ? "Close simulation mode panel" : "Open simulation mode panel"}
         aria-expanded={open}
+        title={!open && simView === "real-setup" ? L(lang, "sidebarHint") : undefined}
         className="fixed left-0 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-5 h-14 rounded-r-lg bg-surface-card border border-l-0 border-surface-stroke text-text-muted hover:text-solar hover:border-solar/40 transition-colors"
         style={{ boxShadow: "2px 0 8px rgba(0,0,0,0.4)" }}
       >
@@ -223,6 +269,15 @@ export function ModeSidebar() {
         >
           {open ? "◀" : "▶"}
         </span>
+        {!open && simView === "real-setup" && (
+          <motion.span
+            className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-solar"
+            initial={{ opacity: 0.5, scale: 1 }}
+            animate={{ opacity: [0.5, 1, 0.5], scale: [1, 1.3, 1] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: "easeInOut" }}
+            aria-hidden="true"
+          />
+        )}
       </button>
 
       {/* ── Sliding panel ── */}

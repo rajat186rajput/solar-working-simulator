@@ -89,8 +89,18 @@ export function TopBar() {
   const isNight = timeHour < 5 || timeHour >= 19;
 
   return (
+    // GATE-1 fix: ModeSidebar's click-away backdrop is `fixed inset-0 z-20`
+    // and TopBar previously had no z-index — an un-positioned element always
+    // renders BELOW any positioned descendant regardless of DOM order, so the
+    // backdrop silently intercepted clicks on TopBar (lang toggle, Reset,
+    // weather chips) whenever the sidebar was open. This was always latent
+    // (the sidebar could always be opened manually) but only got exercised
+    // once auto-open (item 7) started opening it automatically. `relative
+    // z-50` keeps TopBar clickable above the sidebar/backdrop/handle (z-30/
+    // z-20/z-40) at all times — matches the sidebar's own `pt-16` spacing,
+    // which already assumed the header stays visible on top.
     <header
-      className="flex flex-col md:flex-row shrink-0"
+      className="relative z-50 flex flex-col md:flex-row shrink-0"
       style={{
         background: "linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(30,41,59,0.97) 100%)",
         borderBottom: "1px solid transparent",
@@ -237,16 +247,25 @@ export function TopBar() {
                        flow by ordering — but since row1 contains left AND right, we use
                        CSS order to slot it between them on desktop.
       */}
-      <div
-        className={[
-          // Mobile: second row, full width, scrollable
-          "flex items-center h-10 px-3 gap-1 overflow-x-auto scrollbar-none",
-          "border-t border-surface-stroke/30",
-          // Desktop: becomes the center flex-1 piece
-          "md:border-t-0 md:border-l md:border-r md:border-surface-stroke md:flex-1 md:justify-center",
-          "backdrop-blur-md",
-        ].join(" ")}
-      >
+      {/* GATE-1 (Rajat: time-of-day row clipped on mobile, "Nig…" cut off) —
+          sizing/border classes moved onto this outer `relative` wrapper (was
+          on the scrollable div itself) so a right-edge fade can be an
+          absolutely-positioned SIBLING of the scrollable content — sitting
+          on top of it instead of scrolling away with it — signalling "more
+          chips this way" on mobile instead of the row just looking cut off
+          mid-chip. The row itself was already horizontally scrollable; this
+          only adds the affordance. Desktop flex-1/border behaviour unchanged. */}
+      <div className="relative md:flex-1 md:border-l md:border-r md:border-surface-stroke">
+        <div
+          className={[
+            // Mobile: second row, full width, scrollable
+            "flex items-center h-10 px-3 gap-1 overflow-x-auto scrollbar-none",
+            "border-t border-surface-stroke/30",
+            // Desktop: becomes the center flex-1 piece
+            "md:border-t-0 md:justify-center",
+            "backdrop-blur-md",
+          ].join(" ")}
+        >
         {/* Clock readout */}
         <span className="text-[10px] font-bold text-text-primary tabular-nums shrink-0 w-[46px]">
           {formatTime(timeHour)}
@@ -297,6 +316,13 @@ export function TopBar() {
             <span className="ml-0.5 hidden md:inline">{L(lang, dt.key)}</span>
           </button>
         ))}
+        </div>
+        {/* Right-edge scroll fade — mobile only, hidden once desktop content fits without scrolling */}
+        <div
+          className="md:hidden pointer-events-none absolute right-0 top-0 bottom-0 w-6"
+          style={{ background: "linear-gradient(to right, transparent, rgba(15,23,42,0.92))" }}
+          aria-hidden="true"
+        />
       </div>
     </header>
   );

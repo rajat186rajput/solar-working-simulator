@@ -92,10 +92,17 @@ export function DiagramLayout() {
   if (isMobile) {
     return (
       <div className="flex flex-col flex-1 min-h-0">
-        {/* Diagram — fixed height on mobile */}
+        {/* Diagram — GATE-1 (Rajat: "~150px dead space under the schematic
+            on mobile"): the SVG viewBox is 1000×370 (≈2.7:1), so at a fixed
+            45vh (~365px tall on a typical phone) it was being letterboxed —
+            width is the binding constraint (scale≈width/1000), leaving a
+            large empty band below the actual rendered content. Sizing the
+            section to the viewBox's own aspect ratio makes it hug the
+            content exactly; this doesn't change the diagram's on-screen
+            scale (still width-bound), only removes the dead space around it. */}
         <section
           className="w-full min-h-0 shrink-0"
-          style={{ height: "45vh" }}
+          style={{ aspectRatio: "1000 / 370" }}
         >
           {/* isMobile=true suppresses the floating GharDrawer inside SchematicSVG */}
           <SchematicSVG isMobile={true} onMobileGharClick={scrollToAppliances} />

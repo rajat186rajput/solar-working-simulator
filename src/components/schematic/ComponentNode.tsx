@@ -143,8 +143,12 @@ export function ComponentNode({
         </defs>
       )}
 
-      {/* ── Card background — glassmorphism ── */}
+      {/* ── Card background — glassmorphism ──
+          data-node-card: GATE-1 overlap-check script (scripts/overlap-check.mjs)
+          selector for "this is a node's own boundary" — flow labels must
+          never intersect any of these. */}
       <rect
+        data-node-card="true"
         x={x} y={y}
         width={NODE_W} height={NODE_H}
         rx={12}
@@ -156,18 +160,23 @@ export function ComponentNode({
         }}
       />
 
-      {/* ── Badge (Real Setup — module count / PCU-mode initials) ── */}
+      {/* ── Badge (Real Setup — module count / PCU-mode initials) ──
+          GATE-1 (Rajat: badge overlaps the card's top-right corner): this
+          used to straddle the top border (y-8, half above / half below the
+          card edge). Moved fully inside the card with 4px clearance from
+          both the top and right borders — sits in the header strip, clear
+          of the icon (top-left) and the label text (starts at x+36). */}
       {badge && (
         <g>
           <rect
-            x={x + NODE_W - 34} y={y - 8}
+            x={x + NODE_W - 38} y={y + 4}
             width={34} height={15} rx={7.5}
             fill="rgba(15,23,42,0.92)"
             stroke={isActive ? glowColor : "#334155"}
             strokeWidth={1}
           />
           <text
-            x={x + NODE_W - 17} y={y - 0.5}
+            x={x + NODE_W - 21} y={y + 11.5}
             textAnchor="middle"
             dominantBaseline="middle"
             fill={isActive ? glowColor : "#94A3B8"}
@@ -248,7 +257,11 @@ export function ComponentNode({
         </>
       )}
 
-      {/* ── Embedded controls via foreignObject ── */}
+      {/* ── Embedded controls via foreignObject ──
+          data-node-foreignobject: GATE-1 overlap-check script reads this
+          div's scrollHeight vs clientHeight to catch content that overflows
+          its allotted card space (the exact class of bug that produced the
+          "text overflows below the card" feedback). */}
       {controls && controlsHeight > 0 && (
         <foreignObject
           x={x + 6}
@@ -257,8 +270,9 @@ export function ComponentNode({
           height={controlsHeight - 6}
         >
           <div
+            data-node-foreignobject="true"
             className="w-full h-full"
-            style={{ fontFamily: "Inter, sans-serif" }}
+            style={{ fontFamily: "Inter, sans-serif", overflow: "hidden" }}
             onMouseEnter={(e) => e.stopPropagation()}
             onMouseLeave={(e) => e.stopPropagation()}
           >
