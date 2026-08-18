@@ -15,11 +15,22 @@ const NODE_COLOR: Record<FlowNode, string> = {
   grid: "#3B82F6",
 };
 
-export function PriorityChain({ chain, label }: { chain: FlowNode[]; label?: string }) {
+export function PriorityChain({
+  chain,
+  label,
+  ariaLabel,
+}: {
+  chain: FlowNode[];
+  label?: string;
+  /** R7-R9 (code review): full descriptive copy (i18n LABELS *Sub/Day/Night/Load/Charge
+   * keys) — shown as a title tooltip + exposed to assistive tech via sr-only text,
+   * since the visible `label` above is deliberately kept short for the 2×2 chip grid. */
+  ariaLabel?: string;
+}) {
   const reduceMotion = useReducedMotion();
 
   return (
-    <div className="flex items-center gap-1">
+    <div className="flex items-center gap-1" title={ariaLabel}>
       {label && <span className="text-[9px] text-text-muted w-9 shrink-0">{label}</span>}
       {chain.map((node, i) => {
         const Icon = NODE_ICON[node];
@@ -36,6 +47,7 @@ export function PriorityChain({ chain, label }: { chain: FlowNode[]; label?: str
           </motion.span>
         );
       })}
+      {ariaLabel && <span className="sr-only">{ariaLabel}</span>}
     </div>
   );
 }

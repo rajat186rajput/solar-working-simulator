@@ -58,6 +58,7 @@ export const LABELS = {
   realSetupMode:    { en: "Real Setup — House No. 89",   hi: "असली सेटअप — House No. 89" },
   realSetupShort:   { en: "Real Setup",                  hi: "असली सेटअप" },
 
+  connectionHeading:   { en: "Connection",    hi: "कनेक्शन" },
   connection1Title:    { en: "Connection 1",  hi: "कनेक्शन 1" },
   connection1Sub:      { en: "Arun's side",   hi: "अरुण की तरफ" },
   connection2Title:    { en: "Connection 2",  hi: "कनेक्शन 2" },
@@ -78,6 +79,7 @@ export const LABELS = {
   pcuModeGRIDEXPORTSub:{ en: "Solar → Grid → Battery — surplus exported", hi: "सोलर → ग्रिड → बैटरी — बचा हुआ भेजा जाता है" },
   pcuGridExportDisabled:{ en: "Grid Export disabled — net-meter pending", hi: "Grid Export बंद है — नेट-मीटर लगना बाकी है" },
 
+  netMeterHeading:     { en: "Net-Meter", hi: "नेट-मीटर" },
   netMeterLabel:       { en: "Net-meter installed?", hi: "नेट-मीटर लगा है?" },
   netMeterOnCopy:      { en: "Bidirectional net-meter present — surplus solar can be exported to DISCOM.", hi: "बाइडायरेक्शनल नेट-मीटर लगा है — बचा हुआ सोलर DISCOM को भेजा जा सकता है।" },
   netMeterOffCopy:      { en: "Grid Export disabled — net-meter pending", hi: "Grid Export बंद है — नेट-मीटर लगना बाकी है" },
@@ -94,7 +96,11 @@ export const LABELS = {
   overloadAmber:       { en: "Overload — trips in 60s if not reduced", hi: "ओवरलोड — 60 सेकंड में ट्रिप होगा अगर लोड कम न किया" },
   overloadRed:         { en: "Critical overload — trips in 30s", hi: "गंभीर ओवरलोड — 30 सेकंड में ट्रिप होगा" },
   overloadTripped:     { en: "PCU tripped — reduce load and reset", hi: "PCU ट्रिप हो गया — लोड कम करके रीसेट करें" },
+  trippedBadge:        { en: "TRIPPED!", hi: "ट्रिप हो गया!" },
   batteryDodFloor:     { en: "Battery empty — 50% DoD limit reached (lead-acid)", hi: "बैटरी खाली — 50% DoD लिमिट पूरी (लेड-एसिड)" },
+  effAbbrev:           { en: "eff.", hi: "दक्षता" },
+  curtailedChip:       { en: "Curtailed", hi: "बर्बाद" },
+  curtailedHint:       { en: "enable net-meter to export", hi: "एक्सपोर्ट के लिए नेट-मीटर चालू करें" },
 
   ruleGeyser:  { en: "Geyser rule: switch AC off before geyser on — never together.", hi: "गीज़र नियम: गीज़र ऑन करने से पहले AC बंद करें — साथ में कभी नहीं।" },
   ruleEV:      { en: "EV rule: never charge the EV during a power cut — battery empties in 1–2 hrs.", hi: "EV नियम: बिजली कटने पर EV चार्ज न करें — बैटरी 1–2 घंटे में खाली हो जाएगी।" },

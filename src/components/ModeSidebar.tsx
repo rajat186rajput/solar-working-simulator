@@ -137,16 +137,34 @@ function PcuModeGrid() {
               </div>
               {chip.value === "smart" ? (
                 <div className="flex flex-col gap-0.5">
-                  <PriorityChain chain={chain.day ?? []} label="Day" />
-                  <PriorityChain chain={chain.night ?? []} label="Night" />
+                  <PriorityChain
+                    chain={chain.day ?? []}
+                    label={L(lang, "pcuModeSMARTDay").split(":")[0]}
+                    ariaLabel={L(lang, "pcuModeSMARTDay")}
+                  />
+                  <PriorityChain
+                    chain={chain.night ?? []}
+                    label={L(lang, "pcuModeSMARTNight").split(":")[0]}
+                    ariaLabel={L(lang, "pcuModeSMARTNight")}
+                  />
                 </div>
               ) : chip.value === "hybrid-pcu" ? (
                 <div className="flex flex-col gap-0.5">
-                  <PriorityChain chain={chain.load} label="Load" />
-                  <PriorityChain chain={chain.charge ?? []} label="Charge" />
+                  <PriorityChain
+                    chain={chain.load}
+                    label={L(lang, "pcuModeHYBRIDLoad").split(":")[0]}
+                    ariaLabel={L(lang, "pcuModeHYBRIDLoad")}
+                  />
+                  <PriorityChain
+                    chain={chain.charge ?? []}
+                    label={L(lang, "pcuModeHYBRIDCharge").split(":")[0]}
+                    ariaLabel={L(lang, "pcuModeHYBRIDCharge")}
+                  />
                 </div>
+              ) : chip.value === "pcu" ? (
+                <PriorityChain chain={chain.load} ariaLabel={L(lang, "pcuModePCUSub")} />
               ) : (
-                <PriorityChain chain={chain.load} />
+                <PriorityChain chain={chain.load} ariaLabel={L(lang, "pcuModeGRIDEXPORTSub")} />
               )}
             </button>
           );
@@ -168,7 +186,7 @@ function NetMeterToggle() {
   return (
     <div>
       <div className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-2">
-        Net-Meter
+        {L(lang, "netMeterHeading")}
       </div>
       <div className="flex items-center justify-between rounded-xl border border-surface-stroke bg-surface-card/40 px-3 py-2.5">
         <span className="text-xs text-text-primary">{L(lang, "netMeterLabel")}</span>
@@ -186,7 +204,7 @@ function NetMeterToggle() {
 }
 
 export function ModeSidebar() {
-  const { mode, setMode, simView } = useSimStore();
+  const { mode, setMode, simView, lang } = useSimStore();
   const [open, setOpen] = useState(false);
 
   return (
@@ -222,7 +240,7 @@ export function ModeSidebar() {
             {simView === "real-setup" ? (
               <>
                 <div className="text-xs font-semibold uppercase tracking-widest text-text-muted mb-1">
-                  Connection
+                  {L(lang, "connectionHeading")}
                 </div>
                 <ConnectionCards />
                 <div className="border-t border-surface-stroke pt-3">

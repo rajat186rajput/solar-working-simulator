@@ -129,8 +129,43 @@ interface SimStore extends SimState {
   otherConnectionSummary: { loadW: number; batterySoc: number };
   learnSnapshot: ArchSnapshot | null;
   realSetupSnapshot: RealSetupSnapshot | null;
+  /** LEAD-2 (code review): surplus solar wasted this tick — 0 in Learn mode (not modelled there). */
+  curtailedW: number;
+  /** R5 (code review): lead-acid bank at/below its 50% DoD floor — false in Learn mode. */
+  batteryAtDodFloor: boolean;
   /** Generic status-log append (used by RealSetupToast for the F.2 rule toasts). */
   appendStatusLog: (msg: string) => void;
+}
+
+// ─── R4 (code review): shared as-built default block ────────────────────────
+// Used both on first-ever entry into Real Setup (setSimView) AND on Reset
+// while already in Real Setup (resetToDefault) — factored out so Reset no
+// longer force-switches the user back to Learn mode / wipes state to the
+// Learn-mode BOOT_STATE.
+function realSetupFirstEntryDefaults(): Partial<SimStore> {
+  const conn: ConnectionId = "connection-1";
+  const snapshots = defaultConnectionSnapshots();
+  return {
+    panelKwp: REAL_SETUP_PANEL_KWP,
+    batteryKwh: REAL_SETUP_BATTERY_KWH,
+    batteryType: REAL_SETUP_BATTERY_TYPE,
+    batteryOn: true,
+    solarOn: true,
+    inverterWatts: PCU_CAP_W,
+    applianceQtys: snapshots[conn].applianceQtys.map((e) => ({ ...e })),
+    gridOnlyAppliances: new Set<string>(),
+    batterySoc: snapshots[conn].batterySoc,
+    gridAvailable: true,
+    dayType: "clear",
+    netMeterWh: 0,
+    socLocked: true,
+    activeConnection: conn,
+    pcuMode: "smart",
+    netMeterInstalled: false,
+    connectionSnapshots: snapshots,
+    pcuTripped: false,
+    overloadRemainingSec: null,
+  };
 }
 
 function computeState(state: Partial<SimStore>): Partial<SimStore> {
@@ -204,6 +239,8 @@ function computeState(state: Partial<SimStore>): Partial<SimStore> {
       appliancesOn,
       statusLog: newLog,
       otherConnectionSummary,
+      curtailedW: result.curtailedW,
+      batteryAtDodFloor: result.atDodFloor,
     };
   }
 
@@ -255,6 +292,10 @@ function computeState(state: Partial<SimStore>): Partial<SimStore> {
     batterySoc: socLocked ? batterySoc : result.batteryNewSoc,
     appliancesOn,
     statusLog: newLog,
+    // Real-Setup-only concepts — explicitly zeroed so a leftover value from a
+    // prior real-setup tick doesn't linger after switching back to Learn.
+    curtailedW: 0,
+    batteryAtDodFloor: false,
   };
 }
 
@@ -274,6 +315,8 @@ const INITIAL_STATE: SimState & {
   otherConnectionSummary: { loadW: number; batterySoc: number };
   learnSnapshot: ArchSnapshot | null;
   realSetupSnapshot: RealSetupSnapshot | null;
+  curtailedW: number;
+  batteryAtDodFloor: boolean;
 } = {
   mode: "hybrid",
   timeHour: 14,
@@ -305,6 +348,8 @@ const INITIAL_STATE: SimState & {
   otherConnectionSummary: { loadW: 0, batterySoc: 0 },
   learnSnapshot: null,
   realSetupSnapshot: null,
+  curtailedW: 0,
+  batteryAtDodFloor: false,
 
   solarW: getSolarW(14, "clear", 5),
   loadW: calcTotalLoadQty(DEFAULT_APPLIANCE_QTYS),
@@ -476,7 +521,26 @@ export const useSimStore = create<SimStore>((set, get) => ({
   },
 
   resetToDefault() {
-    set({ ...BOOT_STATE });
+    set((s) => {
+      // R4 (code review): resetToDefault() used to unconditionally spread
+      // BOOT_STATE, which is Learn-mode state — that force-switched the user
+      // to Learn and wiped both the learn/real-setup snapshots even when they
+      // pressed Reset while already inside Real Setup. If we're in Real
+      // Setup, stay there and re-apply the as-built defaults instead.
+      if (s.simView === "real-setup") {
+        const next = realSetupFirstEntryDefaults();
+        const merged = { ...s, ...next, simView: "real-setup" as const };
+        return {
+          ...next,
+          simView: "real-setup",
+          // Stale pre-reset snapshot would otherwise resurrect old state the
+          // next time the user switches Learn → Real Setup.
+          realSetupSnapshot: null,
+          ...computeState(merged),
+        } as Partial<SimStore>;
+      }
+      return { ...BOOT_STATE };
+    });
   },
 
   setSocLocked(v: boolean) {
@@ -495,7 +559,13 @@ export const useSimStore = create<SimStore>((set, get) => ({
   },
 
   setLang(lang: "en" | "hi") {
-    set({ lang });
+    // R13 (code review): systemStatus is resolved from statusKey via L(lang, key)
+    // at compute time and cached as a plain string — switching lang without a
+    // recompute left it showing the old language until the next tick.
+    set((s) => {
+      const next = { ...s, lang };
+      return { lang, ...computeState(next) } as Partial<SimStore>;
+    });
   },
 
   // ── Real Setup actions ──────────────────────────────────────────────────
@@ -548,29 +618,7 @@ export const useSimStore = create<SimStore>((set, get) => ({
           // First-ever visit to Real Setup — apply the as-built defaults
           // (03_ASBUILT.md §4.1): 4.8 kWp, UGE5048, 7.2 kWh lead-acid @ 50% DoD,
           // SMART mode default, net-meter OFF, grid ON, Bijnor clear day.
-          const conn: ConnectionId = "connection-1";
-          const snapshots = defaultConnectionSnapshots();
-          next = {
-            panelKwp: REAL_SETUP_PANEL_KWP,
-            batteryKwh: REAL_SETUP_BATTERY_KWH,
-            batteryType: REAL_SETUP_BATTERY_TYPE,
-            batteryOn: true,
-            solarOn: true,
-            inverterWatts: PCU_CAP_W,
-            applianceQtys: snapshots[conn].applianceQtys.map((e) => ({ ...e })),
-            gridOnlyAppliances: new Set<string>(),
-            batterySoc: snapshots[conn].batterySoc,
-            gridAvailable: true,
-            dayType: "clear",
-            netMeterWh: 0,
-            socLocked: true,
-            activeConnection: conn,
-            pcuMode: "smart",
-            netMeterInstalled: false,
-            connectionSnapshots: snapshots,
-            pcuTripped: false,
-            overloadRemainingSec: null,
-          };
+          next = realSetupFirstEntryDefaults();
         }
 
         const merged = { ...s, ...next, simView: "real-setup" as const };

@@ -3,7 +3,7 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useCallback } from "react";
 import { useSimStore } from "@/store/simulation-store";
-import { calcBackupHours } from "@/lib/simulation";
+import { calcBackupHours, LOW_SOC_CUTOFF } from "@/lib/simulation";
 import { PowerFlowLine } from "./PowerFlowLine";
 import { ParticleStream } from "./ParticleStream";
 import { ComponentNode } from "./ComponentNode";
@@ -163,8 +163,12 @@ function CompactToggle({
 
 // ─── Solar node controls (FIX 3 + FIX 5 + FIX 8) ─────────────────────────
 function SolarNodeControls() {
-  const { solarOn, toggleSolar, panelKwp, setPanelKwp, lang, simView } = useSimStore();
+  const { solarOn, toggleSolar, panelKwp, setPanelKwp, lang, simView, curtailedW, netMeterInstalled } = useSimStore();
   const isRealSetup = simView === "real-setup";
+  // LEAD-2 (code review): surplus solar that's neither served, charged, nor
+  // exported is silently wasted — surface it here instead of letting it
+  // vanish from the numbers.
+  const showCurtailed = isRealSetup && curtailedW > 1;
 
   return (
     <div
@@ -207,6 +211,14 @@ function SolarNodeControls() {
       <div style={{ fontSize: 10, color: solarOn ? "#F6C90E88" : "#47556977", lineHeight: 1 }}>
         {solarOn ? `~${(panelKwp * 4.5).toFixed(0)} kWh/day` : "Disconnected"}
       </div>
+
+      {/* Curtailment chip (LEAD-2) — only when solar is actually being wasted */}
+      {showCurtailed && (
+        <div style={{ fontSize: 9, color: "#FB923C", lineHeight: 1.2, fontWeight: 600 }}>
+          {L(lang, "curtailedChip")}: {(curtailedW / 1000).toFixed(2)} kW
+          {!netMeterInstalled ? ` — ${L(lang, "curtailedHint")}` : ""}
+        </div>
+      )}
     </div>
   );
 }
@@ -257,17 +269,26 @@ function BatteryNodeControls() {
     setBatteryKwh(kwh);
   };
 
+  // R5 (code review): lead-acid in Real Setup has a hard 50% DoD floor —
+  // "backup hours" must be measured from the usable band ABOVE that floor,
+  // not from the raw SoC, or it visibly claims hours of backup right at the
+  // point the battery is actually empty (soc === lowCutoff).
+  const isRealSetupLeadAcid = isRealSetup && batteryType === "lead-acid";
+  const lowCutoff = LOW_SOC_CUTOFF[batteryType];
+  const socAboveFloor = isRealSetupLeadAcid ? Math.max(0, batterySoc - lowCutoff) : batterySoc;
   const backupHrs = batteryOn && batteryKwh > 0
-    ? calcBackupHours(batterySoc, batteryKwh, batteryType, loadW, effInUse)
+    ? calcBackupHours(socAboveFloor, batteryKwh, batteryType, loadW, effInUse)
     : 0;
   const backupDisplay = batteryOn && batteryKwh > 0
     ? backupHrs > 24 ? "24+ hr" : `${backupHrs.toFixed(1)} hr`
     : "—";
 
-  const socColor = batterySoc >= 0.8 ? "#22C55E"
-    : batterySoc >= 0.4 ? "#EAB308"
-    : batterySoc >= 0.2 ? "#F97316"
-    : "#EF4444";
+  const socColor = isRealSetupLeadAcid
+    ? batterySoc <= 0.5 ? "#EF4444" : batterySoc <= 0.65 ? "#F97316" : batterySoc <= 0.8 ? "#EAB308" : "#22C55E"
+    : batterySoc >= 0.8 ? "#22C55E"
+      : batterySoc >= 0.4 ? "#EAB308"
+      : batterySoc >= 0.2 ? "#F97316"
+      : "#EF4444";
 
   // Time estimates — always based on battery spec (max C-rate), not variable solar/grid watts
   const usableWh = batteryKwh * DOD_FACTOR[batteryType] * effInUse * 1000;
@@ -300,10 +321,21 @@ function BatteryNodeControls() {
   const bankAh = Math.round((batteryKwh * 1000) / bankVoltage);
   const usableKwh = usableWh / 1000;
   const dodPct = Math.round(DOD_FACTOR[batteryType] * 100);
+  // BATTERY COPY (code review): "usable ~3.2 kWh" was ambiguous — that figure
+  // already folds in the 90% PCU efficiency on top of the 50% DoD (7.2 × 0.5
+  // = 3.6 kWh @ DoD, × 0.90 PCU eff ≈ 3.2 kWh actually deliverable as AC). In
+  // Real Setup, spell out both numbers so it can't be misread against the
+  // System Nameplate's "~3.6 kWh (50% DoD)" figure (that one is pre-efficiency).
+  const dodKwh = (batteryKwh * DOD_FACTOR[batteryType]).toFixed(1);
+  const effPct = Math.round(effInUse * 100);
   const ahBreakdown = batteryKwh > 0
     ? batteryType === "lead-acid"
       // 48V lead-acid bank = 4 × 12V batteries in series, so bank Ah = single-battery Ah
-      ? `${batteryKwh} kWh = 4×${bankAh}Ah@12V — usable ~${usableKwh.toFixed(1)} kWh @ ${dodPct}% DoD`
+      ? isRealSetup
+        ? lang === "hi"
+          ? `${batteryKwh} kWh = 4×${bankAh}Ah@12V — ≈${usableKwh.toFixed(1)} kWh डिलीवरेबल AC (${dodKwh} kWh @ ${dodPct}% DoD × ${effPct}%)`
+          : `${batteryKwh} kWh = 4×${bankAh}Ah@12V — ≈${usableKwh.toFixed(1)} kWh deliverable AC (${dodKwh} kWh @ ${dodPct}% DoD × ${effPct}%)`
+        : `${batteryKwh} kWh = 4×${bankAh}Ah@12V — usable ~${usableKwh.toFixed(1)} kWh @ ${dodPct}% DoD`
       : `${batteryKwh} kWh = ${bankAh}Ah@${bankVoltage}V LFP — usable ~${usableKwh.toFixed(1)} kWh @ ${dodPct}% DoD`
     : "";
 
@@ -468,20 +500,20 @@ function InverterNodeControls() {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "4px 2px 0", height: "100%" }}>
         <div style={{ ...SELECT_STYLE, cursor: "default" }}>
-          {PCU_MODE_BADGE[pcuMode]} — {(PCU_CAP_W / 1000).toFixed(1)} kW battery-mode cap
+          {PCU_MODE_BADGE[pcuMode]} — {(PCU_CAP_W / 1000).toFixed(1)} kW {L(lang, "nameplateBatteryModeCap").toLowerCase()}
         </div>
         <div style={{ fontSize: 9, color: overloadBand !== "none" ? "#EF4444" : "#64748B", lineHeight: 1.25 }}>
           {overloadBand === "none"
-            ? `UGE5048 — ${NAMEPLATE.pcu.mainsRating}, ${NAMEPLATE.pcu.efficiency} eff.`
+            ? `UGE5048 — ${NAMEPLATE.pcu.mainsRating}, ${NAMEPLATE.pcu.efficiency} ${L(lang, "effAbbrev")}`
             : overloadBand === "amber"
               ? L(lang, "overloadAmber")
               : L(lang, "overloadRed")}
         </div>
         <div style={{ fontSize: 9, color: "#475569", lineHeight: 1.25 }}>
           {chain.day
-            ? `Day ${chain.day.join("→")} · Night ${(chain.night ?? []).join("→")}`
+            ? `${L(lang, "pcuModeSMARTDay").split(":")[0]} ${chain.day.join("→")} · ${L(lang, "pcuModeSMARTNight").split(":")[0]} ${(chain.night ?? []).join("→")}`
             : chain.charge
-              ? `Load ${chain.load.join("→")} · Charge ${chain.charge.join("→")}`
+              ? `${L(lang, "pcuModeHYBRIDLoad").split(":")[0]} ${chain.load.join("→")} · ${L(lang, "pcuModeHYBRIDCharge").split(":")[0]} ${chain.charge.join("→")}`
               : chain.load.join(" → ")}
         </div>
       </div>
@@ -953,6 +985,9 @@ export function SchematicSVG({
           animate={{ opacity: solarOn ? 1 : 0.45, scale: 1, x: 0 }}
           transition={{ delay: 0, duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
         >
+          {/* R11 (code review): badge text "×8/4.8kW" overflowed the fixed
+              34px badge pill on narrow screens — "8×600W" is shorter and reads
+              cleaner without needing to widen the pill itself. */}
           <ComponentNode
             cx={110} cy={85}
             label={L(lang, "solarPanels")}
@@ -960,10 +995,10 @@ export function SchematicSVG({
             iconType="sun"
             glowColor={solarOn ? "#F6C90E" : "#475569"}
             isActive={effectiveSolarW > 0 && !isOnGridOffline && solarOn}
-            badge={isRealSetup ? `×8/4.8kW` : undefined}
+            badge={isRealSetup ? `8×600W` : undefined}
             tooltip="Suraj ki roshni → bijli. Jitni dhoop, utni bijli."
             controls={<SolarNodeControls />}
-            controlsHeight={60}
+            controlsHeight={94}
           />
         </motion.g>
 
@@ -1030,7 +1065,7 @@ export function SchematicSVG({
               }
               subvalue={
                 isRealSetup
-                  ? pcuTripped ? "TRIPPED!" : `${(PCU_CAP_W / 1000).toFixed(1)} kW`
+                  ? pcuTripped ? L(lang, "trippedBadge") : `${(PCU_CAP_W / 1000).toFixed(1)} kW`
                   : inverterOverload ? "OVERLOAD!" : `${(useSimStore.getState().inverterWatts / 1000).toFixed(1)} kW`
               }
               iconType="zap"
@@ -1110,12 +1145,21 @@ export function SchematicSVG({
             fontWeight={isRealSetup && houseOverloadLevel !== "none" ? "700" : "400"}
             className="pointer-events-none select-none"
           >
+            {/* R11 (code review): on mobile the node is too narrow for the full
+                sentence — shorten to an "⚠ 57s"-style badge and rely on the
+                RealSetupToast (mobile fallback slot, fires on the same
+                band/trip transition) to carry the full copy. Colour is never
+                the only channel either way — the text itself still changes. */}
             {isRealSetup && pcuTripped
-              ? L(lang, "overloadTripped")
+              ? (isMobile ? `⚠ ${L(lang, "trippedBadge")}` : L(lang, "overloadTripped"))
               : isRealSetup && houseOverloadLevel === "amber"
-                ? `${L(lang, "overloadAmber")}${overloadRemainingSec !== null ? ` (${overloadRemainingSec}s)` : ""}`
+                ? (isMobile
+                    ? `⚠${overloadRemainingSec !== null ? ` ${overloadRemainingSec}s` : ""}`
+                    : `${L(lang, "overloadAmber")}${overloadRemainingSec !== null ? ` (${overloadRemainingSec}s)` : ""}`)
                 : isRealSetup && houseOverloadLevel === "red"
-                  ? `${L(lang, "overloadRed")}${overloadRemainingSec !== null ? ` (${overloadRemainingSec}s)` : ""}`
+                  ? (isMobile
+                      ? `⚠${overloadRemainingSec !== null ? ` ${overloadRemainingSec}s` : ""}`
+                      : `${L(lang, "overloadRed")}${overloadRemainingSec !== null ? ` (${overloadRemainingSec}s)` : ""}`)
                   : `~${(loadW / 1000).toFixed(2)}kWh | ${fmtRs((loadW / 1000) * 6.50)}${L(lang, "perHour")}`}
           </text>
           {/* Tap hint — below node */}

@@ -76,12 +76,16 @@ export function TopBar() {
     simView,
     setSimView,
     overloadBand,
+    batteryAtDodFloor,
   } = useSimStore();
 
   // F.3 — reuse the existing hasAlert badge for the Real Setup overload bands
   // too (amber/red pre-trip states), not just the hard systemOffline/trip case.
+  // R5 (code review): also alert on the lead-acid 50% DoD floor — otherwise an
+  // "empty" real-setup battery is invisible in the TopBar.
   const hasAlert =
-    systemOffline || inverterOverload || (simView === "real-setup" && overloadBand !== "none");
+    systemOffline || inverterOverload ||
+    (simView === "real-setup" && (overloadBand !== "none" || batteryAtDodFloor));
   const isNight = timeHour < 5 || timeHour >= 19;
 
   return (
@@ -155,29 +159,10 @@ export function TopBar() {
 
         {/* Right controls — always visible in row 1 on mobile, part of single row on desktop */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto md:ml-0">
-          {/* Divider before weather — only desktop (md+) */}
-          <div className="w-px self-stretch bg-surface-stroke mx-0.5 hidden md:block" />
-
-          {/* Weather buttons — desktop only (shown in row 2 on mobile) */}
-          <div className="hidden md:flex items-center gap-1">
-            {DAY_TYPES.map((dt) => (
-              <button
-                key={dt.value}
-                onClick={() => setDayType(dt.value)}
-                className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-medium border transition-all ${
-                  dayType === dt.value
-                    ? "border-solar bg-solar/10 text-solar"
-                    : "border-surface-stroke text-text-muted hover:border-surface-stroke/80"
-                }`}
-                style={dayType === dt.value ? { boxShadow: "0 0 10px rgba(246,201,14,0.40)" } : undefined}
-                aria-pressed={dayType === dt.value}
-                aria-label={`Set weather to ${L(lang, dt.key)}`}
-              >
-                <span>{dt.icon}</span>
-                <span className="hidden lg:inline">{L(lang, dt.key)}</span>
-              </button>
-            ))}
-          </div>
+          {/* LEAD-1 (code review): the weather chips lived in TWO places at md+ —
+              here AND in ROW 2 below (which is unconditionally rendered at every
+              breakpoint, not just mobile). ROW 2 is the single source of truth
+              for weather at all widths; this duplicate desktop copy is removed. */}
 
           {/* Divider before lang */}
           <div className="w-px self-stretch bg-surface-stroke mx-0.5" />

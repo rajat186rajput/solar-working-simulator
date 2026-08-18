@@ -18,7 +18,7 @@ function MobileConnectionToggle() {
     { id: "connection-2", titleKey: "connection2Title", subKey: "connection2Sub" },
   ];
   return (
-    <div className="grid grid-cols-2 gap-1.5 px-3 pt-2.5" role="group" aria-label={L(lang, "otherConnectionLbl")}>
+    <div className="grid grid-cols-2 gap-1.5 px-3 pt-2.5" role="group" aria-label={L(lang, "connectionAria")}>
       {OPTS.map((o) => {
         const isActive = activeConnection === o.id;
         return (

@@ -13,6 +13,7 @@
 import { useEffect, useRef } from "react";
 import { useSimStore } from "@/store/simulation-store";
 import { OVERLOAD_AMBER_SEC, OVERLOAD_RED_SEC } from "@/lib/realSetup";
+import type { OverloadBand } from "@/lib/types";
 
 export function OverloadWatcher() {
   const overloadBand = useSimStore((s) => s.overloadBand);
@@ -20,7 +21,12 @@ export function OverloadWatcher() {
   const setPcuTripped = useSimStore((s) => s.setPcuTripped);
   const setOverloadRemainingSec = useSimStore((s) => s.setOverloadRemainingSec);
 
-  const bandRef = useRef(overloadBand);
+  // R3 (code review): must seed "none", not the live overloadBand at mount
+  // time — if this component remounts while the band is already amber/red
+  // (e.g. a Connection switch while overloaded), seeding with the live band
+  // makes bandRef.current === overloadBand on the very first render, so the
+  // "fresh entry" branch below never fires and the countdown never starts.
+  const bandRef = useRef<OverloadBand>("none");
   const remainingRef = useRef<number | null>(null);
 
   useEffect(() => {

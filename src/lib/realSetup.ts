@@ -33,15 +33,11 @@ export const REAL_SETUP_DAY_TYPE: DayType = "clear";
 
 /** Battery-mode continuous output cap (UGE5048 nameplate) — applies to all 4 PCU modes' AC output. */
 export const PCU_CAP_W = 4000;
-/** Mains-mode rating, PF 0.8 (nameplate only, informational — not used in overload math). */
-export const PCU_MAINS_VA = 5000;
 /** Transformer-based PCU — real-world efficiency, not the generic 0.95 used by Learn mode. */
 export const PCU_EFF = 0.90;
 
 /** SPV (solar) battery-charge current default + derived watt cap (18A × ~54V per manual). */
 export const SPV_CHARGE_A_DEFAULT = 18;
-export const SPV_CHARGE_A_MIN = 12;
-export const SPV_CHARGE_A_MAX = 60;
 export const CHARGE_VOLTAGE = 54; // approx bank charge voltage (4×13.5V-ish)
 export const SPV_CHARGE_CAP_W = SPV_CHARGE_A_DEFAULT * CHARGE_VOLTAGE; // ≈ 972W
 
@@ -68,8 +64,6 @@ function getMaxBatteryRateW(batteryKwh: number, batteryType: BatteryType): numbe
 }
 
 // ─── Connection selector (03_ASBUILT.md §3 + §1 topology) ───────────────────
-export const CONNECTIONS: ConnectionId[] = ["connection-1", "connection-2"];
-
 /**
  * Default ON appliance ids per connection — split from the existing
  * ApplianceData[] catalog (no new appliance types invented). Both connections
@@ -167,6 +161,10 @@ export interface RealSetupResult {
   overloadBand: OverloadBand;
   /** When set, the store should render L(lang, statusKey) instead of systemStatus (i18n Copy Register). */
   statusKey?: LabelKey;
+  /** LEAD-2 (code review): surplus solar wasted this tick (not served to load, charged, or exported). */
+  curtailedW: number;
+  /** R5 (code review): lead-acid bank sitting at/below its 50% DoD floor — surfaced as a TopBar alert too. */
+  atDodFloor: boolean;
 }
 
 export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
@@ -187,7 +185,16 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
     pcuTripped,
   } = input;
 
-  const solarW = solarOn ? getSolarW(timeHour, dayType, panelKwp) : 0;
+  // R6 (code review): PV DC output passes through the PCU's DC→AC inverter
+  // stage before it can serve load / export to grid, so it takes the real
+  // UGE5048 efficiency hit (~90%) here at the source. Battery charging from
+  // solar in this mode goes through the same inverter-mediated charge path
+  // (no separate high-efficiency DC-DC MPPT is modelled), so this single
+  // multiplication is the ONLY place PCU_EFF is applied to solar — the
+  // battery's own usable-kWh efficiency factor (below) is a distinct
+  // round-trip loss, not a second application of this same loss.
+  const rawSolarW = solarOn ? getSolarW(timeHour, dayType, panelKwp) : 0;
+  const solarW = rawSolarW * PCU_EFF;
   const isDay = solarW > 0;
   const surplus = solarW - rawLoadW;
   const deficit = Math.max(0, -surplus);
@@ -217,6 +224,8 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
       inverterOverload: true,
       overloadBand,
       statusKey: "overloadTripped",
+      curtailedW: 0,
+      atDodFloor: !batteryEffectivelyOff && batterySoc <= LOW_SOC_CUTOFF[batteryType] + 0.01 && LOW_SOC_CUTOFF[batteryType] >= 0.5,
     };
   }
 
@@ -228,37 +237,56 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
   let systemStatus = "";
   let systemOffline = false;
   let batteryNewSoc = batterySoc;
+  // LEAD-2 (code review): surplus solar that is neither served to load, nor
+  // charged into the battery, nor exported to grid — silently wasted unless
+  // surfaced in the UI. Only set >0 in the surplus/day branches below.
+  let curtailedW = 0;
 
-  // ── Shared helpers (used by multiple mode branches) ──
+  // R1 (code review): chargeFromSolar()/chargeFromGrid() must be ADDITIVE —
+  // HYBRID mode calls both in the same tick (solar first, grid top-up
+  // second) and the battery can only physically be charged once per tick.
+  // socCursor is a running cursor so a second call sees the SoC delta the
+  // first call already produced, and batteryChargeW accumulates instead of
+  // being overwritten. The combined charge rate (solar + grid together) is
+  // capped at min(SPV_CHARGE_CAP_W, maxRateW) — the PCU's single battery
+  // charge circuit, not two independent ones.
+  let socCursor = activeSoc;
+  const combinedChargeCapW = Math.min(SPV_CHARGE_CAP_W, maxRateW);
+
   function chargeFromSolar(availableSolarSurplusW: number): number {
-    if (batteryEffectivelyOff || activeSoc >= 1.0) return 0;
-    const chargeW = Math.min(availableSolarSurplusW, SPV_CHARGE_CAP_W, maxRateW);
+    if (batteryEffectivelyOff || socCursor >= 1.0) return 0;
+    const roomW = Math.max(0, combinedChargeCapW - batteryChargeW);
+    const chargeW = Math.min(availableSolarSurplusW, roomW);
     if (chargeW <= 0) return 0;
-    batteryChargeW = chargeW;
+    batteryChargeW += chargeW;
     const deltaKwh = (chargeW * TICK_HOURS) / 1000;
-    batteryNewSoc = clamp(batterySoc + deltaKwh / batteryUsableKwh, 0, 1);
-    if (batteryNewSoc >= 0.99) batteryNewSoc = 1.0;
+    socCursor = clamp(socCursor + deltaKwh / batteryUsableKwh, 0, 1);
+    if (socCursor >= 0.99) socCursor = 1.0;
+    batteryNewSoc = socCursor;
     return chargeW;
   }
 
   function chargeFromGrid(capW: number): number {
-    if (batteryEffectivelyOff || activeSoc >= 1.0) return 0;
-    const chargeW = Math.min(capW, maxRateW);
+    if (batteryEffectivelyOff || socCursor >= 1.0) return 0;
+    const roomW = Math.max(0, combinedChargeCapW - batteryChargeW);
+    const chargeW = Math.min(capW, roomW);
     if (chargeW <= 0) return 0;
-    batteryChargeW = chargeW;
+    batteryChargeW += chargeW;
     const deltaKwh = (chargeW * TICK_HOURS) / 1000;
-    batteryNewSoc = clamp(batterySoc + deltaKwh / batteryUsableKwh, 0, 1);
-    if (batteryNewSoc >= 0.99) batteryNewSoc = 1.0;
+    socCursor = clamp(socCursor + deltaKwh / batteryUsableKwh, 0, 1);
+    if (socCursor >= 0.99) socCursor = 1.0;
+    batteryNewSoc = socCursor;
     return chargeW;
   }
 
   function dischargeToward(targetW: number): number {
-    if (batteryEffectivelyOff || activeSoc <= lowCutoff) return 0;
+    if (batteryEffectivelyOff || socCursor <= lowCutoff) return 0;
     const dischargeW = Math.min(targetW, maxRateW);
     if (dischargeW <= 0) return 0;
     batteryDischargeW = dischargeW;
     const deltaKwh = (dischargeW * TICK_HOURS) / 1000;
-    batteryNewSoc = clamp(batterySoc - deltaKwh / batteryUsableKwh, 0, 1);
+    socCursor = clamp(socCursor - deltaKwh / batteryUsableKwh, 0, 1);
+    batteryNewSoc = socCursor;
     return dischargeW;
   }
 
@@ -266,6 +294,7 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
   function runPcuChain() {
     if (surplus >= 0) {
       const charged = chargeFromSolar(surplus);
+      curtailedW = Math.max(0, surplus - charged);
       systemStatus = charged > 0
         ? "Solar poora load de raha hai, battery bhi charge ho rahi hai"
         : !batteryEffectivelyOff
@@ -319,6 +348,9 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
       const gridTopUp = solarCharge < SPV_CHARGE_CAP_W
         ? chargeFromGrid(Math.min(GRID_CHARGE_CAP_W, SPV_CHARGE_CAP_W - solarCharge))
         : 0;
+      // Solar never serves load in this branch (grid does) — anything solar
+      // didn't put into the battery charge is wasted (LEAD-2).
+      curtailedW = Math.max(0, solarW - solarCharge);
       gridImportW = rawLoadW + gridTopUp;
       netMeterWh -= gridImportW * TICK_HOURS;
       systemStatus = solarCharge + gridTopUp > 0
@@ -327,7 +359,8 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
     } else {
       // Grid fail — falls back to Solar → Battery for load (no grid to rely on)
       if (surplus >= 0) {
-        chargeFromSolar(surplus);
+        const charged = chargeFromSolar(surplus);
+        curtailedW = Math.max(0, surplus - charged);
         systemStatus = "Bijli gayi — solar se load chal raha hai, battery charge bhi ho rahi hai";
       } else {
         const discharged = dischargeToward(deficit);
@@ -372,19 +405,23 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
         systemStatus = "Solar se battery charge ho rahi hai";
       }
     } else {
-      const discharged = dischargeToward(deficit);
-      const stillDeficit = deficit - discharged;
-      if (stillDeficit > 1) {
-        if (gridAvailable) {
-          gridImportW = stillDeficit;
-          netMeterWh -= stillDeficit * TICK_HOURS;
-          systemStatus = "Solar kam — battery + grid se load chal raha hai";
+      // R2 (code review): the declared GRID EXPORT chain is
+      // Solar → Grid → Battery (PCU_PRIORITY_CHAINS["grid-export"].load,
+      // matches the sidebar chip / inverter text / 03_ASBUILT §2.2) — a
+      // deficit must be topped up from grid FIRST, battery is the last
+      // resort, not the first responder.
+      if (gridAvailable) {
+        gridImportW = deficit;
+        netMeterWh -= deficit * TICK_HOURS;
+        systemStatus = "Solar kam — grid se load chal raha hai (battery reserved, GRID EXPORT chain)";
+      } else {
+        const discharged = dischargeToward(deficit);
+        if (discharged >= deficit - 1) {
+          systemStatus = "Grid nahi — battery se load chal raha hai";
         } else {
           systemOffline = true;
-          systemStatus = "Solar kam, battery khali, grid bhi nahi — system offline";
+          systemStatus = "Solar kam, grid nahi, battery bhi khali — system offline";
         }
-      } else {
-        systemStatus = "Solar kam — battery se load chal raha hai";
       }
     }
   }
@@ -413,5 +450,7 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
     inverterOverload: false,
     overloadBand,
     statusKey,
+    curtailedW,
+    atDodFloor,
   };
 }
