@@ -255,12 +255,17 @@ export function ModeSidebar() {
           layer — it can never collide with page content — and the small
           pulsing dot is confined to the 20px-wide handle itself, nowhere
           near any node's card (cards start at x≈38px+). */}
+      {/* GATE-2 round-3 (Rajat: handle floats over the appliance grid on
+          mobile) — hidden below 768px; DiagramLayout's MobilePcuModeRow is
+          the <768px replacement for Connection/PCU-mode/net-meter access
+          (Connection cards are already always visible via
+          MobileConnectionToggle at every mobile width). */}
       <button
         onClick={handleToggle}
         aria-label={open ? "Close simulation mode panel" : "Open simulation mode panel"}
         aria-expanded={open}
         title={!open && simView === "real-setup" ? L(lang, "sidebarHint") : undefined}
-        className="fixed left-0 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-5 h-14 rounded-r-lg bg-surface-card border border-l-0 border-surface-stroke text-text-muted hover:text-solar hover:border-solar/40 transition-colors"
+        className="hidden md:flex fixed left-0 top-1/2 -translate-y-1/2 z-40 items-center justify-center w-5 h-14 rounded-r-lg bg-surface-card border border-l-0 border-surface-stroke text-text-muted hover:text-solar hover:border-solar/40 transition-colors"
         style={{ boxShadow: "2px 0 8px rgba(0,0,0,0.4)" }}
       >
         <span

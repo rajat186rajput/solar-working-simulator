@@ -34,6 +34,14 @@ interface ComponentNodeProps {
   badge?: string;
   /** Real Setup overload escalation (Section F.3 / G.3) — House node only. */
   overloadLevel?: "none" | "amber" | "red" | "tripped";
+  /** GATE-2 round-3 (Rajat: "battery box has TWO bars") — Battery only. When
+   * true, the built-in SoC bar below becomes the ONE interactive slider
+   * (transparent range input overlaid exactly on the bar) instead of the
+   * card carrying a second, separate slider row inside its controls. */
+  socEditable?: boolean;
+  onSocChange?: (value: number) => void;
+  socDisabled?: boolean;
+  socThumbColor?: string;
 }
 
 const NODE_W = 150;
@@ -42,6 +50,7 @@ const NODE_H_BASE = 70;
 export function ComponentNode({
   cx, cy, label, subvalue, iconType, glowColor, isActive, danger, socPercent,
   controls, controlsHeight = 0, isCharging = false, badge, overloadLevel = "none",
+  socEditable = false, onSocChange, socDisabled = false, socThumbColor,
 }: ComponentNodeProps) {
   const Icon = ICON_MAP[iconType];
   const reduceMotion = useReducedMotion();
@@ -253,6 +262,43 @@ export function ComponentNode({
               animate={{ x: [x + 8 - 40, x + 8 + (NODE_W - 16)] }}
               transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
             />
+          )}
+          {/* GATE-2 round-3 — this bar IS the interactive slider (Rajat:
+              "one bar, not two"). A transparent range input sits exactly on
+              top of the visual bar (same x/width, generous height for a
+              real touch/click target); .soc-overlay-slider (globals.css)
+              hides the native track so only the thumb renders, so it still
+              reads as ONE bar. Battery is the only caller that passes
+              socEditable. */}
+          {socEditable && onSocChange && (
+            <foreignObject x={x + 6} y={y + 51} width={NODE_W - 12} height={16}>
+              <div
+                data-soc-slider="true"
+                className="w-full h-full flex items-center"
+                onMouseEnter={(e) => e.stopPropagation()}
+                onMouseLeave={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={Math.round((socPercent ?? 0) * 100)}
+                  onChange={(e) => onSocChange(Number(e.target.value) / 100)}
+                  disabled={socDisabled}
+                  aria-label="Battery state of charge"
+                  className="soc-overlay-slider"
+                  style={{
+                    width: "100%",
+                    height: 16,
+                    margin: 0,
+                    cursor: socDisabled ? "default" : "pointer",
+                    opacity: socDisabled ? 0.5 : 1,
+                    ["--soc-thumb-color" as string]: socThumbColor ?? "#22c55e",
+                  } as React.CSSProperties}
+                />
+              </div>
+            </foreignObject>
           )}
         </>
       )}

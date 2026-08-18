@@ -177,3 +177,30 @@
   cursor: default;
   opacity: 0.5;
 }
+/* Keyboard focus + hover — thumb grows slightly so the single merged bar
+   still gives clear affordance that it's interactive (GATE-2 round-3). */
+.soc-overlay-slider:hover:not(:disabled)::-webkit-slider-thumb,
+.soc-overlay-slider:focus-visible::-webkit-slider-thumb {
+  width: 15px;
+  height: 15px;
+  margin-top: -4.5px;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.25), 0 0 4px rgba(0,0,0,0.6);
+}
+.soc-overlay-slider:hover:not(:disabled)::-moz-range-thumb,
+.soc-overlay-slider:focus-visible::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.25), 0 0 4px rgba(0,0,0,0.6);
+}
+
+/* GATE-2 round-3 (Rajat: mobile node text unreadable at 375px) — mobile
+   schematic now renders inside a horizontally-scrollable, wider-than-viewport
+   canvas so text keeps its authored px size instead of being crushed by the
+   viewBox-to-viewport scale ratio. */
+.schematic-mobile-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.schematic-mobile-scroll::-webkit-scrollbar {
+  display: none;
+}

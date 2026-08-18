@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useSimStore } from "@/store/simulation-store";
 import { calcBackupHours, LOW_SOC_CUTOFF } from "@/lib/simulation";
 import { PowerFlowLine } from "./PowerFlowLine";
@@ -16,7 +16,6 @@ import {
   PCU_CAP_W,
   PCU_EFF,
   NAMEPLATE,
-  PCU_PRIORITY_CHAINS,
 } from "@/lib/realSetup";
 import type { PcuMode, OverloadBand } from "@/lib/types";
 
@@ -47,28 +46,43 @@ function getNodeOverloadLevel(
 //                 →  [Hybrid Inverter]  ↔  [Battery]     →  [Ghar / Load]
 // [UPPCL Grid]    →
 //
-// Node geometry (NODE_W=150, NODE_H_BASE=70):
-//   Solar:    cx=110, cy=85,  controlsH=60  → total_h=130 → y: 20..150   | right edge x=185
-//   Grid:     cx=110, cy=265, controlsH=50  → total_h=120 → y: 205..325  | right edge x=185
-//   Inverter: cx=430, cy=150, no controls   → total_h=70  → y: 115..185  | left x=355, right x=505
-//   Battery:  cx=670, cy=150, controlsH=90  → total_h=160 → y: 70..230   | left x=595, right x=745
-//   Ghar:     cx=890, cy=150, no controls   → total_h=70  → y: 115..185  | left x=815
+// GATE-2 round-3 (Rajat: "flow lines cross card content") — node heights
+// change per-mode (controlsHeight varies with isRealSetup/simView), so no
+// anchor below is ever a hardcoded constant anymore. Every path endpoint is
+// derived from `rectOf(cx, cy, controlsHeight)` computed at render time from
+// the SAME controlsHeight value passed into that node's <ComponentNode>, so
+// a path can never drift out of sync with what's actually on screen.
 //
-// Flow paths (node-edge to node-edge):
-//   Solar    → Inverter : M 185 85  C 300 85  300 150 355 150   (curve top-left → center)
-//   Grid     → Inverter : M 185 265 C 300 265 300 150 355 150   (curve bot-left → center)
-//   Inverter → Battery  : M 505 150 L 595 150                   (horizontal right)
-//   Battery  → Inverter : M 595 154 L 505 154                   (horizontal left — slightly offset)
-//   Inverter → Ghar     : M 430 185 L 430 350 L 890 350 L 890 185  (bottom bypass — below Grid bottom)
+// Node geometry (NODE_W=150, NODE_H_BASE=70, see rectOf() below):
+//   Solar:    cx=110, cy=85,  controlsH=SOLAR_CONTROLS_H
+//   Grid:     cx=110, cy=265, controlsH=GRID_CONTROLS_H
+//   Inverter: cx=430, cy=150, controlsH=INVERTER_CONTROLS_H (mode-dependent)
+//   Battery:  cx=670, cy=150, controlsH=BATTERY_CONTROLS_H
+//   Ghar:     cx=890, cy=150, controlsH=GHAR_CONTROLS_H
+//
+// Flow paths (node-edge to node-edge, curve control points at x=300 are pure
+// bezier shaping — not anchors, always mid-way regardless of node height):
+//   Solar    → Inverter : solar.right,solar.cy    C 300,cy  300,cy  inverter.left,inverter.cy
+//   Grid     → Inverter : grid.right,grid.cy      C 300,cy  300,cy  inverter.left,inverter.cy
+//   Inverter → Battery  : inverter.right,cy  L  battery.left,cy      (horizontal)
+//   Battery  → Inverter : battery.left,cy+4  L  inverter.right,cy+4 (horizontal, offset)
+//   Inverter → Ghar     : inverter.cx,inverter.bottom L …350… L ghar.cx,ghar.bottom
 
-const PATHS = {
-  solar:         "M 185 85  C 300 85  300 150 355 150",
-  gridImport:    "M 185 265 C 300 265 300 150 355 150",
-  gridExport:    "M 360 154 C 300 154 300 265 185 265",
-  batteryCharge: "M 505 150 L 595 150",
-  batteryDisch:  "M 595 154 L 505 154",
-  load:          "M 430 185 L 430 350 L 890 350 L 890 185",
-};
+const NODE_W = 150;
+const NODE_H_BASE = 70;
+
+/** Actual on-screen rect of a ComponentNode, from the SAME cx/cy/controlsHeight it renders with. */
+function rectOf(cx: number, cy: number, controlsHeight: number) {
+  const h = NODE_H_BASE + controlsHeight;
+  return {
+    cx,
+    cy,
+    left: cx - NODE_W / 2,
+    right: cx + NODE_W / 2,
+    top: cy - h / 2,
+    bottom: cy + h / 2,
+  };
+}
 
 // ─── Solar capacity presets ────────────────────────────────────────────────
 const SOLAR_KWP_OPTIONS = [
@@ -267,13 +281,18 @@ function fmtHours(h: number): string {
   return `${mins}m`;
 }
 
-// ─── Battery node controls (FIX 4 + FIX 5 + FIX 10 + SoC slider) ────────
+// ─── Battery node controls (FIX 4 + FIX 5 + FIX 10) ──────────────────────
+// GATE-2 round-3 (Rajat: "battery box has TWO bars, keep ONE") — the SoC bar
+// itself (with its interactive range input overlaid) now lives INSIDE
+// ComponentNode's own built-in bar (socEditable prop, wired from the
+// <ComponentNode> call below in SchematicSVG). This component only renders
+// the toggle/lock/time-estimate/spec text that sits BELOW that one bar.
 function BatteryNodeControls({ isMobile = false }: { isMobile?: boolean }) {
   const {
     batteryKwh, setBatteryKwh,
     batteryType, setBatteryType,
     batteryOn, toggleBattery,
-    batterySoc, setBatterySoc,
+    batterySoc,
     loadW,
     gridAvailable,
     socLocked, setSocLocked,
@@ -340,33 +359,24 @@ function BatteryNodeControls({ isMobile = false }: { isMobile?: boolean }) {
   const bankAh = Math.round((batteryKwh * 1000) / bankVoltage);
   const usableKwh = usableWh / 1000;
   const dodPct = Math.round(DOD_FACTOR[batteryType] * 100);
-  // BATTERY COPY (code review) + GATE-1 (Rajat: text overflowed below the
-  // card): "usable ~3.2 kWh" was ambiguous — that figure already folds in
-  // the 90% PCU efficiency on top of the 50% DoD (7.2 × 0.5 = 3.6 kWh @ DoD,
-  // × 0.90 PCU eff ≈ 3.2 kWh deliverable as AC). Real Setup spells this out
-  // so it can't be misread against the System Nameplate's pre-efficiency
-  // "~3.6 kWh (50% DoD)" figure — but as ONE line it overflowed the card, so
-  // it's now split into two short lines instead of being lengthened further.
-  const effPct = Math.round(effInUse * 100);
+  // GATE-2 round-3 (Rajat: "spec shown TWICE — pill + 2 grey lines"): the
+  // pill just above ("{kwh} kWh — {NAMEPLATE.battery.name}") already states
+  // the full bank spec (kWh, Ah×count, voltage, chemistry) in Real Setup, so
+  // the old first breakdown line duplicated it verbatim. Kept to exactly ONE
+  // line — the one number the pill does NOT carry: usable capacity after DoD.
   const ahBreakdownLines: string[] = batteryKwh <= 0
     ? []
     : batteryType === "lead-acid"
       // 48V lead-acid bank = 4 × 12V batteries in series, so bank Ah = single-battery Ah
       ? isRealSetup
-        ? lang === "hi"
-          ? [
-              `${batteryKwh} kWh · 4×${bankAh} Ah लेड-एसिड`,
-              `≈${usableKwh.toFixed(1)} kWh उपयोग AC (${dodPct}% DoD × ${effPct}%)`,
-            ]
-          : [
-              `${batteryKwh} kWh · 4×${bankAh} Ah lead-acid`,
-              `≈${usableKwh.toFixed(1)} kWh usable AC (${dodPct}% DoD × ${effPct}%)`,
-            ]
+        ? [lang === "hi"
+            ? `≈${usableKwh.toFixed(1)} kWh उपयोग AC · ${dodPct}% DoD`
+            : `≈${usableKwh.toFixed(1)} kWh usable AC · ${dodPct}% DoD`]
         : [`${batteryKwh} kWh = 4×${bankAh}Ah@12V — usable ~${usableKwh.toFixed(1)} kWh @ ${dodPct}% DoD`]
       : [`${batteryKwh} kWh = ${bankAh}Ah@${bankVoltage}V LFP — usable ~${usableKwh.toFixed(1)} kWh @ ${dodPct}% DoD`];
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5, padding: "4px 2px 0", height: "100%" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "4px 2px 0", height: "100%" }}>
       {/* Toggle row */}
       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
         <CompactToggle isOn={batteryOn} onToggle={toggleBattery} onColor="#10B981" />
@@ -379,85 +389,37 @@ function BatteryNodeControls({ isMobile = false }: { isMobile?: boolean }) {
         </span>
       </div>
 
-      {/* SoC slider row */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-          <span style={{ fontSize: 10, color: socColor, fontWeight: 700, fontVariantNumeric: "tabular-nums", minWidth: 28 }}>
-            {Math.round(batterySoc * 100)}%
-          </span>
-          <button
-            onClick={() => setSocLocked(!socLocked)}
-            aria-label={socLocked ? "Unlock SoC (let simulation update)" : "Lock SoC (manual control)"}
-            style={{
-              fontSize: 11,
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              padding: 0,
-              lineHeight: 1,
-              color: socLocked ? "#F6C90E" : "#64748B",
-            }}
-          >
-            {socLocked ? "🔒" : "🔓"}
-          </button>
-          <span style={{ fontSize: 10, color: "#475569", marginLeft: 2 }}>
-            {socLocked ? L(lang, "manual") : L(lang, "auto")}
-          </span>
-        </div>
-        {/* GATE-1 (Rajat: "battery wale box me extra bar hai") — the gradient
-            display bar and the native range-input track used to stack as TWO
-            visible bars. Now a single track: the gradient div is the visual
-            fill, the range input is absolutely overlaid on top with its own
-            track made transparent (.soc-overlay-slider in globals.css) so
-            only its thumb renders — one bar, still keyboard-accessible. */}
-        {(() => {
-          const barColor = batterySoc > 0.6 ? '#22c55e' : batterySoc > 0.3 ? '#eab308' : '#ef4444';
-          return (
-            <div style={{ position: "relative", width: "100%", height: "12px", marginBottom: "4px" }}>
-              <div style={{
-                position: "absolute",
-                left: 0, right: 0, top: "3px",
-                height: '6px',
-                borderRadius: '3px',
-                background: `linear-gradient(to right,
-                  ${barColor} 0%,
-                  ${barColor} ${batterySoc * 100}%,
-                  rgba(255,255,255,0.1) ${batterySoc * 100}%,
-                  rgba(255,255,255,0.1) 100%)`,
-                opacity: batteryOn && batteryKwh > 0 ? 1 : 0.4,
-              }} />
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={1}
-                value={Math.round(batterySoc * 100)}
-                onChange={(e) => {
-                  setBatterySoc(Number(e.target.value) / 100);
-                  setSocLocked(true);
-                }}
-                disabled={!batteryOn || batteryKwh <= 0}
-                aria-label="Battery state of charge"
-                className="soc-overlay-slider"
-                style={{
-                  position: "absolute",
-                  left: 0, right: 0, top: 0,
-                  width: "100%",
-                  height: "12px",
-                  margin: 0,
-                  cursor: batteryOn && batteryKwh > 0 ? "pointer" : "default",
-                  opacity: batteryOn && batteryKwh > 0 ? 1 : 0.4,
-                  ["--soc-thumb-color" as string]: socColor,
-                } as React.CSSProperties}
-              />
-            </div>
-          );
-        })()}
+      {/* GATE-2 round-3 (Rajat: "one bar, not two") — the SoC bar + its
+          interactive slider now live on the CARD itself (ComponentNode's
+          built-in bar, made interactive via socEditable). This row only
+          keeps the manual/auto lock (a tiny text button) beside the
+          time-estimate — no bar here anymore. */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 4 }}>
+        <button
+          onClick={() => setSocLocked(!socLocked)}
+          aria-label={socLocked ? "Unlock SoC (let simulation update)" : "Lock SoC (manual control)"}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+            fontSize: 9,
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
+            lineHeight: 1,
+            color: socLocked ? "#F6C90E" : "#64748B",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <span style={{ fontSize: 10 }}>{socLocked ? "🔒" : "🔓"}</span>
+          {socLocked ? L(lang, "manual") : L(lang, "auto")}
+        </button>
         {/* Time estimate — hidden on mobile Real Setup (GATE-1 max-2-line budget) */}
         {!(isMobile && isRealSetup) && (
-          <div style={{ fontSize: 10, color: "#94A3B8", lineHeight: 1.2 }}>
+          <span style={{ fontSize: 9, color: "#94A3B8", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {batteryOn && batteryKwh > 0 ? timeEstimate : "— No battery"}
-          </div>
+          </span>
         )}
       </div>
 
@@ -543,36 +505,33 @@ function InverterNodeControls({ isMobile = false }: { isMobile?: boolean }) {
   const { inverterWatts, setInverterWatts, gridAvailable, mode, simView, pcuMode, overloadBand, lang } = useSimStore();
 
   if (simView === "real-setup") {
-    const chain = PCU_PRIORITY_CHAINS[pcuMode];
+    // GATE-2 round-3 (Rajat: "grey block low-contrast + too long"). Max 2
+    // lines total, both ≥4.5:1 contrast (#CBD5E1 measures ~12:1 against this
+    // card's dark background — see contrast note below):
+    //   line 1: mode badge + battery-mode cap (unchanged role, shortened text
+    //            so it fits on ONE line instead of wrapping to two)
+    //   line 2: mains rating + efficiency, OR the overload alert when active
+    // The priority-chain (day/night arrows) is dropped here entirely — it
+    // already lives in the ModeSidebar PCU-mode chips (PriorityChain), so
+    // this was pure duplication, not new information, and duplicating it
+    // was the reason this card needed 3 lines / ~108px in the first place.
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "4px 2px 0", height: "100%" }}>
-        <div style={{ ...SELECT_STYLE, cursor: "default" }}>
-          {PCU_MODE_BADGE[pcuMode]} — {(PCU_CAP_W / 1000).toFixed(1)} kW {L(lang, "nameplateBatteryModeCap").toLowerCase()}
+        <div style={{ ...SELECT_STYLE, cursor: "default", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {PCU_MODE_BADGE[pcuMode]} · {(PCU_CAP_W / 1000).toFixed(1)}kW {L(lang, "nameplateCapShort")}
         </div>
         {/* GATE-1 mobile (Rajat: node text unreadable at 375px — the SVG's
             foreignObject text is scaled DOWN by the viewBox-to-viewport
-            ratio, ~0.375× at 375px vs ~1.44× at desktop 1440px, so a "9px"
-            style here renders ~3px on screen). Only show the overload alert
-            (safety-critical) on mobile; the efficiency line is already
-            duplicated in the System Nameplate panel below the diagram. */}
+            ratio). Only show the overload alert (safety-critical) on mobile;
+            the efficiency line is already duplicated in the System Nameplate
+            panel below the diagram. */}
         {(!isMobile || overloadBand !== "none") && (
-          <div style={{ fontSize: 10, color: overloadBand !== "none" ? "#EF4444" : "#64748B", lineHeight: 1.25 }}>
+          <div style={{ fontSize: 10, color: overloadBand !== "none" ? "#EF4444" : "#CBD5E1", lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {overloadBand === "none"
-              ? `UGE5048 — ${NAMEPLATE.pcu.mainsRating}, ${NAMEPLATE.pcu.efficiency} ${L(lang, "effAbbrev")}`
+              ? `${NAMEPLATE.pcu.mainsRating} · ${NAMEPLATE.pcu.efficiency} ${L(lang, "effAbbrev")}`
               : overloadBand === "amber"
                 ? L(lang, "overloadAmber")
                 : L(lang, "overloadRed")}
-          </div>
-        )}
-        {/* Priority-chain line — also shown per-mode in the ModeSidebar chips;
-            dropped on mobile to stay within the max-2-secondary-lines budget. */}
-        {!isMobile && (
-          <div style={{ fontSize: 10, color: "#475569", lineHeight: 1.25 }}>
-            {chain.day
-              ? `${L(lang, "pcuModeSMARTDay").split(":")[0]} ${chain.day.join("→")} · ${L(lang, "pcuModeSMARTNight").split(":")[0]} ${(chain.night ?? []).join("→")}`
-              : chain.charge
-                ? `${L(lang, "pcuModeHYBRIDLoad").split(":")[0]} ${chain.load.join("→")} · ${L(lang, "pcuModeHYBRIDCharge").split(":")[0]} ${chain.charge.join("→")}`
-                : chain.load.join(" → ")}
           </div>
         )}
       </div>
@@ -734,6 +693,33 @@ function GharDrawer({
   );
 }
 
+// ─── Ghar node controls (GATE-2 round-3) ─────────────────────────────────
+// Rajat: the "☰ Appliances" tap hint used to be a free-floating pill drawn
+// BELOW the node's own card rect — it sat directly on top of the
+// Inverter→Ghar flow line's vertical run. Moving it INSIDE the card (as a
+// normal controls foreignObject, same idiom every other node uses) fixes
+// this at the source: the node's own rect grows to include it, so the flow
+// line's dynamically-computed anchor (ghar.bottom, see rectOf() below)
+// automatically clears it — no separate occlusion pill needed.
+function GharNodeControls() {
+  const { lang } = useSimStore();
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100%",
+        padding: "2px 2px 0",
+      }}
+    >
+      <span style={{ fontSize: 9, color: "#64748B", fontWeight: 500 }}>
+        {L(lang, "gharApplianceHint")}
+      </span>
+    </div>
+  );
+}
+
 export function SchematicSVG({
   isMobile = false,
   onMobileGharClick,
@@ -752,6 +738,9 @@ export function SchematicSVG({
     gridAvailable,
     systemOffline,
     batterySoc,
+    setBatterySoc,
+    batteryKwh,
+    setSocLocked,
     inverterOverload,
     solarOn,
     batteryOn,
@@ -799,9 +788,88 @@ export function SchematicSVG({
     : batterySoc >= 0.2 ? "#F97316"
     : "#EF4444";
 
-  return (
-    // 40vh container — full width, short height
-    <div className="w-full h-full" style={{ position: "relative" }}>
+  // ── GATE-2 round-3: real node geometry, single source of truth ──────────
+  // These are the SAME controlsHeight values passed to each <ComponentNode>
+  // below — reused here so rectOf() always describes what's actually on
+  // screen, never a guess. See the PATHS comment block above rectOf().
+  const SOLAR_CONTROLS_H    = 94;
+  const GRID_CONTROLS_H     = 50;
+  // Real Setup's 3-line block was cut to 2 lines (contrast fix + dropped the
+  // sidebar-duplicated priority chain) so it now needs the same height as Learn.
+  const INVERTER_CONTROLS_H = 60;
+  // Learn mode renders 2 <select> dropdowns + 1 breakdown line (more content
+  // than Real Setup's fixed nameplate pill) — measured via the overlap-check
+  // script's (c) foreignObject-overflow check (scrollHeight vs clientHeight),
+  // not guessed.
+  const BATTERY_CONTROLS_H  = 136;
+  const GHAR_CONTROLS_H     = 22;
+
+  const solarRect    = rectOf(110, 85,  SOLAR_CONTROLS_H);
+  const gridRect     = rectOf(110, 265, GRID_CONTROLS_H);
+  const inverterRect = rectOf(430, 150, INVERTER_CONTROLS_H);
+  const batteryRect  = rectOf(670, 150, BATTERY_CONTROLS_H);
+  const gharRect     = rectOf(890, 150, GHAR_CONTROLS_H);
+
+  const paths = {
+    solar:         `M ${solarRect.right} ${solarRect.cy} C 300 ${solarRect.cy} 300 ${inverterRect.cy} ${inverterRect.left} ${inverterRect.cy}`,
+    gridImport:    `M ${gridRect.right} ${gridRect.cy} C 300 ${gridRect.cy} 300 ${inverterRect.cy} ${inverterRect.left} ${inverterRect.cy}`,
+    gridExport:    `M ${inverterRect.left + 5} ${inverterRect.cy + 4} C 300 ${inverterRect.cy + 4} 300 ${gridRect.cy} ${gridRect.right} ${gridRect.cy}`,
+    batteryCharge: `M ${inverterRect.right} ${inverterRect.cy} L ${batteryRect.left} ${batteryRect.cy}`,
+    batteryDisch:  `M ${batteryRect.left} ${batteryRect.cy + 4} L ${inverterRect.right} ${inverterRect.cy + 4}`,
+    load:          `M ${inverterRect.cx} ${inverterRect.bottom} L ${inverterRect.cx} 350 L ${gharRect.cx} 350 L ${gharRect.cx} ${gharRect.bottom}`,
+  };
+
+  const modeLabel = isRealSetup ? `REAL SETUP — ${PCU_MODE_BADGE[pcuMode]} MODE` : `${mode.toUpperCase()} MODE`;
+
+  // ── GATE-2 round-3 (Rajat: mode pill overlaps Solar node on mobile) ──────
+  // Was `absolute top-2 left-2` floating ON TOP of the SVG — on mobile the
+  // Solar node's card starts almost at the diagram's own top edge, so the
+  // pill sat directly over its corner. Now rendered as a normal shrink-0 flow
+  // row ABOVE the diagram box — never overlaps anything, on any width.
+  const modeBadge = (
+    <div className="shrink-0 px-1 pt-0.5 pb-1" style={{ pointerEvents: "none" }}>
+      <span className="inline-block px-2 py-1 rounded-md bg-surface-card/80 border border-surface-stroke text-[10px] text-text-secondary font-mono">
+        {modeLabel}
+      </span>
+    </div>
+  );
+
+  // ── GATE-2 round-3 (Rajat: node text unreadable at 375px) ────────────────
+  // Below 768px the schematic renders inside a horizontally-scrollable canvas
+  // wider than the viewport (MOBILE_SCHEMATIC_MIN_W ≈ viewBox width, i.e.
+  // ~1:1 scale) so SVG text keeps its authored px size instead of being
+  // crushed by the viewBox→viewport scale ratio (was ~0.375× at 375px,
+  // shrinking a "10px" label to ~3.75px on screen). The box still keeps the
+  // viewBox's own aspect ratio, so there's no vertical dead space either.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [showSwipeHint, setShowSwipeHint] = useState(true);
+  const MOBILE_SCHEMATIC_MIN_W = 1000;
+  // Our OWN initial centering scroll (below) fires a native 'scroll' event
+  // too — without this guard it immediately hid the swipe hint before the
+  // user ever touched the screen, defeating the hint's whole purpose.
+  const programmaticScrollRef = useRef(false);
+
+  useEffect(() => {
+    if (!isMobile) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    // Initial scroll: center the Inverter node (viewBox cx=430) in the
+    // visible viewport — the natural "middle" of the pipeline story.
+    const scale = MOBILE_SCHEMATIC_MIN_W / 1000;
+    const inverterPx = 430 * scale;
+    programmaticScrollRef.current = true;
+    el.scrollLeft = Math.max(0, inverterPx - el.clientWidth / 2);
+    requestAnimationFrame(() => {
+      programmaticScrollRef.current = false;
+    });
+  }, [isMobile]);
+
+  const handleMobileScroll = useCallback(() => {
+    if (programmaticScrollRef.current) return;
+    if (showSwipeHint) setShowSwipeHint(false);
+  }, [showSwipeHint]);
+
+  const schematicSvg = (
       <svg
         viewBox="0 0 1000 370"
         className="w-full h-full"
@@ -862,13 +930,13 @@ export function SchematicSVG({
 
         {/* Solar → Inverter */}
         <PowerFlowLine
-          pathD={PATHS.solar}
+          pathD={paths.solar}
           powerW={isOnGridOffline || !solarOn ? 0 : effectiveSolarW}
           flowType="solar"
           isActive={effectiveSolarW > 0 && !isOnGridOffline && solarOn}
         />
         <ParticleStream
-          pathD={PATHS.solar}
+          pathD={paths.solar}
           powerW={isOnGridOffline || !solarOn ? 0 : effectiveSolarW}
           flowType="solar"
           isActive={effectiveSolarW > 0 && !isOnGridOffline && solarOn}
@@ -878,14 +946,14 @@ export function SchematicSVG({
         {showGrid && (
           <>
             <PowerFlowLine
-              pathD={PATHS.gridImport}
+              pathD={paths.gridImport}
               powerW={gridImportW}
               flowType="grid-import"
               isActive={gridImportW > 0 && gridAvailable}
               gridFail={isGridFail}
             />
             <ParticleStream
-              pathD={PATHS.gridImport}
+              pathD={paths.gridImport}
               powerW={gridImportW}
               flowType="grid-import"
               isActive={gridImportW > 0 && gridAvailable}
@@ -897,14 +965,14 @@ export function SchematicSVG({
         {showGrid && (
           <>
             <PowerFlowLine
-              pathD={PATHS.gridExport}
+              pathD={paths.gridExport}
               powerW={gridExportW}
               flowType="grid-export"
               isActive={gridExportW > 0 && gridAvailable}
               gridFail={isGridFail}
             />
             <ParticleStream
-              pathD={PATHS.gridExport}
+              pathD={paths.gridExport}
               powerW={gridExportW}
               flowType="grid-export"
               isActive={gridExportW > 0 && gridAvailable}
@@ -916,13 +984,13 @@ export function SchematicSVG({
         {showBattery && (
           <>
             <PowerFlowLine
-              pathD={PATHS.batteryCharge}
+              pathD={paths.batteryCharge}
               powerW={batteryOn ? batteryChargeW : 0}
               flowType="battery-charge"
               isActive={batteryChargeW > 0 && batteryOn}
             />
             <ParticleStream
-              pathD={PATHS.batteryCharge}
+              pathD={paths.batteryCharge}
               powerW={batteryOn ? batteryChargeW : 0}
               flowType="battery-charge"
               isActive={batteryChargeW > 0 && batteryOn}
@@ -934,13 +1002,13 @@ export function SchematicSVG({
         {showBattery && (
           <>
             <PowerFlowLine
-              pathD={PATHS.batteryDisch}
+              pathD={paths.batteryDisch}
               powerW={batteryOn ? batteryDischargeW : 0}
               flowType="battery-discharge"
               isActive={batteryDischargeW > 0 && batteryOn}
             />
             <ParticleStream
-              pathD={PATHS.batteryDisch}
+              pathD={paths.batteryDisch}
               powerW={batteryOn ? batteryDischargeW : 0}
               flowType="battery-discharge"
               isActive={batteryDischargeW > 0 && batteryOn}
@@ -950,13 +1018,13 @@ export function SchematicSVG({
 
         {/* Inverter → Ghar/Load */}
         <PowerFlowLine
-          pathD={PATHS.load}
+          pathD={paths.load}
           powerW={isOnGridOffline ? 0 : loadW}
           flowType="load"
           isActive={!systemOffline && loadW > 0}
         />
         <ParticleStream
-          pathD={PATHS.load}
+          pathD={paths.load}
           powerW={isOnGridOffline ? 0 : loadW}
           flowType="load"
           isActive={!systemOffline && loadW > 0}
@@ -966,7 +1034,7 @@ export function SchematicSVG({
 
         {/* Solar → Inverter label (bezier midpoint ≈ 293,118, label ABOVE at y=104) */}
         {effectiveSolarW > 0 && !isOnGridOffline && solarOn && (
-          <g className="pointer-events-none" data-flow-label="true">
+          <g className="pointer-events-none" data-flow-label="true" data-flow-type="solar">
             <rect x={233} y={93} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#F6C90E" strokeWidth={0.5} />
             <text x={293} y={104} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#F6C90E" fontSize="10" fontWeight="600">{Math.round(effectiveSolarW)}W</tspan>
@@ -978,7 +1046,7 @@ export function SchematicSVG({
 
         {/* Grid Import label */}
         {showGrid && gridImportW > 0 && gridAvailable && (
-          <g className="pointer-events-none" data-flow-label="true">
+          <g className="pointer-events-none" data-flow-label="true" data-flow-type="grid-import">
             <rect x={233} y={183} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#3B82F6" strokeWidth={0.5} />
             <text x={293} y={194} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#60A5FA" fontSize="10" fontWeight="600">{Math.round(gridImportW)}W</tspan>
@@ -990,7 +1058,7 @@ export function SchematicSVG({
 
         {/* Grid Export label */}
         {showGrid && gridExportW > 0 && gridAvailable && (
-          <g className="pointer-events-none" data-flow-label="true">
+          <g className="pointer-events-none" data-flow-label="true" data-flow-type="grid-export">
             <rect x={233} y={183} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#A855F7" strokeWidth={0.5} />
             <text x={293} y={194} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#C084FC" fontSize="10" fontWeight="600">{Math.round(gridExportW)}W</tspan>
@@ -1007,7 +1075,7 @@ export function SchematicSVG({
             dropped the ₹/hr tspan (redundant — same total cost is already on
             the Load label) so the remaining two tspans still fit comfortably. */}
         {showBattery && batteryChargeW > 0 && batteryOn && (
-          <g className="pointer-events-none" data-flow-label="true">
+          <g className="pointer-events-none" data-flow-label="true" data-flow-type="battery-charge">
             <rect x={510} y={127} width={80} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#22C55E" strokeWidth={0.5} />
             <text x={550} y={135} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#34D399" fontSize="9" fontWeight="600">{Math.round(batteryChargeW)}W</tspan>
@@ -1018,7 +1086,7 @@ export function SchematicSVG({
 
         {/* Battery Discharge label — same shrink as Battery Charge above. */}
         {showBattery && batteryDischargeW > 0 && batteryOn && (
-          <g className="pointer-events-none" data-flow-label="true">
+          <g className="pointer-events-none" data-flow-label="true" data-flow-type="battery-discharge">
             <rect x={510} y={127} width={80} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#F97316" strokeWidth={0.5} />
             <text x={550} y={135} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#FB923C" fontSize="9" fontWeight="600">{Math.round(batteryDischargeW)}W</tspan>
@@ -1029,7 +1097,7 @@ export function SchematicSVG({
 
         {/* Load (Inverter→Ghar) label */}
         {!systemOffline && loadW > 0 && !isOnGridOffline && (
-          <g className="pointer-events-none" data-flow-label="true">
+          <g className="pointer-events-none" data-flow-label="true" data-flow-type="load">
             <rect x={600} y={326} width={120} height={16} rx={8} fill="rgba(0,0,0,0.55)" stroke="#F8FAFC" strokeWidth={0.5} />
             <text x={660} y={337} textAnchor="middle" dominantBaseline="middle" fontFamily="Inter, sans-serif">
               <tspan fill="#E2E8F0" fontSize="10" fontWeight="600">{Math.round(loadW)}W</tspan>
@@ -1060,7 +1128,7 @@ export function SchematicSVG({
             badge={isRealSetup ? `8×600W` : undefined}
             tooltip="Suraj ki roshni → bijli. Jitni dhoop, utni bijli."
             controls={<SolarNodeControls isMobile={isMobile} />}
-            controlsHeight={94}
+            controlsHeight={SOLAR_CONTROLS_H}
           />
         </motion.g>
 
@@ -1084,7 +1152,7 @@ export function SchematicSVG({
                 danger={!gridAvailable}
                 tooltip="UPPCL grid connection. Toggle to simulate power cut."
                 controls={<GridNodeControls />}
-                controlsHeight={50}
+                controlsHeight={GRID_CONTROLS_H}
               />
             </motion.g>
           )}
@@ -1144,12 +1212,7 @@ export function SchematicSVG({
               danger={isRealSetup ? pcuTripped : inverterOverload}
               tooltip="DC→AC conversion. Handles all loads in your home."
               controls={<InverterNodeControls isMobile={isMobile} />}
-              // GATE-1 overlap-check (c): both branches of InverterNodeControls
-              // were overflowing their foreignObject — Learn needed ~57px
-              // (had 34), Real Setup desktop (3 lines) needed ~96px (had 40).
-              // Bumped with margin; mobile Real Setup only renders 1-2 lines
-              // so this is headroom there, not tight.
-              controlsHeight={isRealSetup ? 108 : 60}
+              controlsHeight={INVERTER_CONTROLS_H}
             />
           </motion.g>
         </AnimatePresence>
@@ -1167,20 +1230,27 @@ export function SchematicSVG({
               <ComponentNode
                 cx={670} cy={150}
                 label={L(lang, "battery")}
-                subvalue={batteryOn && useSimStore.getState().batteryKwh > 0
+                subvalue={batteryOn && batteryKwh > 0
                   ? `${Math.round(batterySoc * 100)}%`
                   : batteryOn ? "No Battery" : "Disabled"}
                 iconType="battery"
                 glowColor={batteryOn ? socColor : "#475569"}
                 isActive={batteryActive}
-                socPercent={batteryOn && useSimStore.getState().batteryKwh > 0 ? batterySoc : 0}
+                socPercent={batteryOn && batteryKwh > 0 ? batterySoc : 0}
                 isCharging={batteryChargeW > 0 && batteryOn}
                 tooltip="Charges in the day, powers your home at night or during cuts."
                 controls={<BatteryNodeControls isMobile={isMobile} />}
-                // GATE-1 overlap-check (c): BatteryNodeControls was
-                // overflowing its foreignObject by ~10px in both modes
-                // (166/168 needed vs 156 available) — bumped with margin.
-                controlsHeight={180}
+                controlsHeight={BATTERY_CONTROLS_H}
+                // GATE-2 round-3 (Rajat: "one bar, not two") — this IS the
+                // interactive slider now; BatteryNodeControls no longer
+                // renders a second track underneath it.
+                socEditable
+                onSocChange={(v) => {
+                  setBatterySoc(v);
+                  setSocLocked(true);
+                }}
+                socDisabled={!batteryOn || batteryKwh <= 0}
+                socThumbColor={socColor}
               />
             </motion.g>
           )}
@@ -1205,11 +1275,17 @@ export function SchematicSVG({
             isActive={!systemOffline}
             overloadLevel={houseOverloadLevel}
             tooltip="Tap to manage appliances"
+            controls={<GharNodeControls />}
+            controlsHeight={GHAR_CONTROLS_H}
           />
-          {/* Per-hour kWh and cost line — below watt value, above tap hint
-              (Real Setup amber/red/tripped: overload status + countdown instead) */}
+          {/* Per-hour kWh and cost line — below watt value, inside the card's
+              base zone (Real Setup amber/red/tripped: overload status +
+              countdown instead). GATE-2 round-3: kept inside cy±(NODE_H_BASE/2)
+              — the base zone stays fixed at 70px regardless of controlsHeight,
+              so this offset from cy is always safe, clear of the "☰ Appliances"
+              controls row now embedded lower in the (taller) card. */}
           <text
-            x={890} y={178}
+            x={890} y={168}
             textAnchor="middle"
             dominantBaseline="middle"
             fill={isRealSetup && houseOverloadLevel !== "none" ? (houseOverloadLevel === "amber" ? "#FB923C" : "#EF4444") : "#64748B"}
@@ -1235,26 +1311,6 @@ export function SchematicSVG({
                       : `${L(lang, "overloadRed")}${overloadRemainingSec !== null ? ` (${overloadRemainingSec}s)` : ""}`)
                   : `~${(loadW / 1000).toFixed(2)}kWh | ${fmtRs((loadW / 1000) * 6.50)}${L(lang, "perHour")}`}
           </text>
-          {/* Tap hint — below node. GATE-1 (Rajat: "ghost text under the card
-              overlaps the load line"): this sits directly on the vertical
-              run of the Inverter→Ghar flow path (x=890, y:185→350), so the
-              animated chevrons visually cut through the bare text. A small
-              opaque backdrop pill (same idiom as the flow-watt labels)
-              occludes the line behind it instead of fighting it — fixes
-              both Learn and Real Setup since this markup isn't mode-gated. */}
-          <g className="pointer-events-none select-none" data-flow-label="true">
-            <rect x={890 - 40} y={193 - 7} width={80} height={16} rx={8} fill="rgba(15,23,42,0.80)" />
-            <text
-              x={890} y={193}
-              textAnchor="middle"
-              dominantBaseline="middle"
-              fill="#64748B"
-              fontSize="9"
-              fontFamily="Inter, sans-serif"
-            >
-              ☰ Appliances
-            </text>
-          </g>
         </motion.g>
 
         {/* On-Grid grid-fail blackout overlay */}
@@ -1269,28 +1325,65 @@ export function SchematicSVG({
           />
         )}
       </svg>
+  );
 
-      {/* Mode label badge */}
+  // ── Mobile: horizontally-scrollable, aspect-locked canvas (no vertical
+  //    dead space — height is always exactly width × 370/1000, never a
+  //    fixed/guessed value) — vs Desktop: fills its parent box, SVG's own
+  //    preserveAspectRatio="meet" handles any letterboxing. ──────────────
+  const diagramBox = isMobile ? (
+    // GATE-2 round-3 fix: the swipe hint must NOT be a descendant of the
+    // scrolling element — an absolutely-positioned child of an
+    // `overflow-x-auto` container scrolls WITH the content (its containing
+    // block is the scrolled padding box), so "centered" drifted off-screen
+    // the moment the container scrolled. This outer `relative` wrapper is a
+    // separate, non-scrolling positioning context the hint anchors to
+    // instead, so it always stays centered over the visible viewport.
+    <div className="relative w-full">
       <div
-        className="absolute top-2 left-2 px-2 py-1 rounded-md bg-surface-card/80 border border-surface-stroke text-xs text-text-secondary font-mono"
-        style={{ pointerEvents: "none" }}
+        ref={scrollRef}
+        onScroll={handleMobileScroll}
+        className="w-full overflow-x-auto overflow-y-hidden schematic-mobile-scroll"
       >
-        {isRealSetup ? `REAL SETUP — ${PCU_MODE_BADGE[pcuMode]} MODE` : `${mode.toUpperCase()} MODE`}
+        <div style={{ width: MOBILE_SCHEMATIC_MIN_W, aspectRatio: "1000 / 370", position: "relative" }}>
+          {schematicSvg}
+          {isRealSetup && <OverloadWatcher />}
+        </div>
       </div>
-
-      {/* Overload wall-clock countdown — Real Setup only, no UI of its own */}
+      {/* Swipe hint — fades away after the first user-initiated scroll */}
+      <div
+        className="pointer-events-none absolute bottom-1.5 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[9px] text-text-secondary select-none"
+        style={{
+          background: "rgba(15,23,42,0.85)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          opacity: showSwipeHint ? 1 : 0,
+          transition: "opacity 0.4s ease",
+        }}
+        aria-hidden="true"
+      >
+        {L(lang, "swipeHint")}
+      </div>
+    </div>
+  ) : (
+    <div className="flex-1 min-h-0 relative">
+      {schematicSvg}
       {isRealSetup && <OverloadWatcher />}
+      {/* Ghar Appliance Drawer — float mode only (pinned mode renders in
+          DiagramLayout as docked aside). Desktop only — appliances are
+          always visible below the diagram on mobile. */}
+      <GharDrawer
+        open={gharDrawerOpen}
+        onClose={closeGharDrawer}
+        isPinned={gharDrawerPinned}
+        onPinToggle={togglePin}
+      />
+    </div>
+  );
 
-      {/* Ghar Appliance Drawer — float mode only (pinned mode renders in DiagramLayout as docked aside)
-          Suppressed on mobile — appliances are always visible below the diagram */}
-      {!isMobile && (
-        <GharDrawer
-          open={gharDrawerOpen}
-          onClose={closeGharDrawer}
-          isPinned={gharDrawerPinned}
-          onPinToggle={togglePin}
-        />
-      )}
+  return (
+    <div className={isMobile ? "w-full flex flex-col" : "w-full h-full flex flex-col"} style={{ position: "relative" }}>
+      {modeBadge}
+      {diagramBox}
     </div>
   );
 }

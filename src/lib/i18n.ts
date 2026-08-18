@@ -123,6 +123,12 @@ export const LABELS = {
   nameplateBank:           { en: "Bank", hi: "बैंक" },
   nameplateUsable:         { en: "Usable (50% DoD)", hi: "उपयोग योग्य (50% DoD)" },
   nameplateLowCut:         { en: "Low-cut", hi: "लो-कट" },
+
+  // GATE-2 round-3 (anchors/battery-bar/inverter-contrast/mobile-scroll fixes)
+  gharApplianceHint:  { en: "☰ Appliances", hi: "☰ उपकरण" },
+  swipeHint:          { en: "◀ swipe ▶", hi: "◀ स्वाइप करें ▶" },
+  pcuModeMobileHeading: { en: "PCU Mode", hi: "PCU मोड" },
+  nameplateCapShort:  { en: "cap", hi: "कैप" },
 } as const
 
 export type LabelKey = keyof typeof LABELS
