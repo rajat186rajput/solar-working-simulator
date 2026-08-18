@@ -253,21 +253,27 @@ describe("Grid-available overload correction (03_ASBUILT §2.2(e))", () => {
     assertEnergyBalance(input, "(b) grid OFF, load 4003W");
   });
 
-  // (c) Grid ON, load 4500W (above the 4kW PVVNL sanction, still nowhere
-  // near the manual's Grid-Tie-ON overload table) -> sanctioned-load
-  // advisory true, but still no trip/overload.
-  it("(c) grid ON, load 4500W -> sanctionedLoadExceeded true, overloadBand none, no trip", () => {
+  // (c) UPDATED 2026-08-18 by the §2.2(e) correction #2 below ("sanctioned
+  // load exceed kaise ho gaya jab 4018W solar se hai aur 1845 grid se?") --
+  // sanctionedLoadExceeded now tracks gridImportW (what the PVVNL meter
+  // sees), not total household load. At noon (solar ~4320W, near/above the
+  // 4kW cap already), a 4500W total load only pulls ~500W from grid once
+  // the inverter-cap fix below is applied -- nowhere near the 4kW
+  // sanction -- so this now correctly asserts FALSE (the original assertion
+  // of TRUE was itself a symptom of the bug the correction fixes, since it
+  // was computed from rawLoadW back then). Still no trip/overload either way.
+  it("(c) grid ON, load 4500W -> sanctionedLoadExceeded FALSE now (grid draw ~500W, not total load) — overloadBand none, no trip", () => {
     const input = baseInput({
       pcuMode: "smart",
       gridAvailable: true,
       loadW: 4500,
     });
     const r = runPcuSimulation(input);
-    expect(r.sanctionedLoadExceeded).toBe(true);
-    expect(4500).toBeGreaterThan(SANCTIONED_LOAD_W);
+    expect(r.sanctionedLoadExceeded).toBe(false);
+    expect(r.gridImportW).toBeLessThan(SANCTIONED_LOAD_W);
     expect(r.overloadBand).toBe("none");
     expect(r.systemOffline).toBe(false);
-    assertEnergyBalance(input, "(c) grid ON, load 4500W sanctioned advisory");
+    assertEnergyBalance(input, "(c) grid ON, load 4500W sanctioned advisory (corrected)");
   });
 
   // (d) Grid ON, load 11000W (>=200% of the 5kVA mains rating -- the
@@ -296,5 +302,100 @@ describe("Grid-available overload correction (03_ASBUILT §2.2(e))", () => {
     const input = baseInput({ gridAvailable: false, loadW: 9000, batterySoc: 0.9 });
     const r = runPcuSimulation(input);
     expect(r.sanctionedLoadExceeded).toBe(false);
+  });
+});
+
+// ─── Inverter cap with grid ON + sanctioned-load-on-grid-draw (03_ASBUILT
+// §2.2(e) correction #2) ─────────────────────────────────────────────────
+// Owner's 2nd question, 2026-08-18: preview showed SMART, grid ON, load
+// 7303W = solar 4018 + battery 1440 + grid 1845, Grid node flagging
+// "Sanctioned load exceeded". Two bugs: (1) correction #1 (previous round)
+// only silenced the false TRIP alarm -- the energy FLOWS still let
+// solar-to-load + battery-discharge-to-load add up to 5458W, far above the
+// 4kW inverter's real throughput ceiling; (2) sanctionedLoadExceeded was
+// computed from TOTAL household load, not gridImportW (what the PVVNL
+// meter actually sees) -- so it fired even though the grid was only
+// carrying 1845W, nowhere near the 4kW sanction.
+describe("Inverter cap with grid ON (03_ASBUILT §2.2(e) correction #2)", () => {
+  // (a) SMART day, grid ON, solar plentiful (>=4kW, default noon/4.8kWp
+  // gives ~4320W -- comfortably over the cap regardless of the screenshot's
+  // exact 4018), load 7303W -> inverter maxes its OWN throughput at
+  // PCU_CAP_W (4000W to load), battery gets ZERO headroom left to discharge
+  // (4000 - 4000 = 0), grid carries the rest: 7303 - 4000 = 3303W. That
+  // 3303W grid draw is below the 4kW sanction -> no advisory either.
+  it("(a) grid ON, solar >=4kW, load 7303W -> battery discharge 0, gridImport 3303, sanctionedLoadExceeded false, energy balance holds", () => {
+    const input = baseInput({
+      pcuMode: "smart",
+      gridAvailable: true,
+      loadW: 7303,
+      // default panelKwp (4.8) at noon -> solarW ~4320W, already >= PCU_CAP_W
+    });
+    const r = runPcuSimulation(input);
+    expect(r.batteryDischargeW).toBe(0);
+    expect(r.gridImportW).toBeCloseTo(3303, 0);
+    expect(r.sanctionedLoadExceeded).toBe(false); // 3303 < 4000
+    expect(r.overloadBand).toBe("none");
+    expect(r.systemOffline).toBe(false);
+    assertEnergyBalance(input, "(a) grid ON, load 7303W inverter cap");
+  });
+
+  // (b) Same setup, heavier load (8500W) -> grid draw crosses the 4kW
+  // sanction: gridImport = 8500 - 4000 = 4500W -> advisory true.
+  it("(b) grid ON, solar >=4kW, load 8500W -> gridImport 4500, sanctionedLoadExceeded true", () => {
+    const input = baseInput({
+      pcuMode: "smart",
+      gridAvailable: true,
+      loadW: 8500,
+    });
+    const r = runPcuSimulation(input);
+    expect(r.batteryDischargeW).toBe(0);
+    expect(r.gridImportW).toBeCloseTo(4500, 0);
+    expect(r.sanctionedLoadExceeded).toBe(true);
+    expect(r.overloadBand).toBe("none");
+    assertEnergyBalance(input, "(b) grid ON, load 8500W sanctioned advisory");
+  });
+
+  // (c) Grid ON, solar modest (tuned to exactly 1000W so it never itself
+  // hits the cap), load 6000W, SoC 0.9 (plenty of headroom) -> solar covers
+  // 1000W of the load directly, battery discharges into the remaining
+  // inverter headroom (4000-1000=3000W) but is itself capped at its own
+  // C-rate maxRateW (1440W for the default 7.2kWh lead-acid bank -- so the
+  // battery's OWN limit binds here, not the inverter headroom) -> grid
+  // covers whatever's left: 6000 - 1000 - 1440 = 3560W.
+  it("(c) grid ON, solar 1000W, load 6000W, SoC 0.9 -> solarToLoad 1000 (via gridImport check), batteryDischarge 1440 (own C-rate cap), gridImport 3560", () => {
+    const input = baseInput({
+      pcuMode: "smart",
+      gridAvailable: true,
+      panelKwp: 1000 / (1.0 * 0.9 * 1000), // factor=1.0 at noon, PCU_EFF=0.9 -> solarW exactly 1000
+      loadW: 6000,
+      batterySoc: 0.9,
+    });
+    const r = runPcuSimulation(input);
+    expect(r.solarW).toBeCloseTo(1000, 0);
+    expect(r.batteryDischargeW).toBeCloseTo(1440, 0); // battery's own C-rate cap binds, not the 3000W inverter headroom
+    expect(r.gridImportW).toBeCloseTo(3560, 0); // 6000 - 1000 - 1440
+    assertEnergyBalance(input, "(c) grid ON, solar 1000W, load 6000W");
+  });
+
+  // (d) Grid OFF, load 7303W -> UNCHANGED "as before" path: overloadBand is
+  // computed from rawLoadW vs PCU_CAP_W BEFORE this function's chain logic
+  // ever runs (7303/4000 = 182.6% -> lands in the >150% band, "critical"
+  // per the existing 3-tier getOverloadBand thresholds: <120% amber,
+  // <150% red, else critical) -> immediate trip (the early-return branch),
+  // exactly as it did before either §2.2(e) correction.
+  it("(d) grid OFF, load 7303W (182.6% of PCU_CAP_W, >150%) -> critical band, immediate trip path unchanged", () => {
+    const input = baseInput({
+      pcuMode: "smart",
+      gridAvailable: false,
+      loadW: 7303,
+      pcuTripped: false,
+    });
+    const r = runPcuSimulation(input);
+    expect(r.overloadBand).toBe("critical");
+    expect(r.systemOffline).toBe(true);
+    expect(r.inverterOverload).toBe(true);
+    expect(r.statusKey).toBe("overloadTripped");
+    expect(r.sanctionedLoadExceeded).toBe(false); // grid OFF -> advisory never applies
+    expect(r.gridImportW).toBe(0);
   });
 });

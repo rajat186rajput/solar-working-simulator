@@ -134,10 +134,17 @@ export const LABELS = {
   otherAppliancesShow: { en: "+ Other appliances", hi: "+ अन्य उपकरण" },
   otherAppliancesHide: { en: "− Hide other appliances", hi: "− अन्य उपकरण छुपाएं" },
 
-  // Real Setup — sanctioned-load advisory (03_ASBUILT §2.2(e), grid-ON only, never a trip)
-  sanctionedLoadChip:   { en: "Sanctioned load exceeded", hi: "स्वीकृत भार पार" },
+  // Real Setup — sanctioned-load advisory (03_ASBUILT §2.2(e), grid-ON only,
+  // never a trip). Correction #2 (owner's 2nd question, 2026-08-18): tracks
+  // the actual GRID DRAW (what the PVVNL meter sees), not total household
+  // load — {kw} is replaced with gridImportW/1000 to 1 decimal by the caller.
+  sanctionedLoadChip:   { en: "Grid draw {kw} kW > sanctioned 4 kW", hi: "ग्रिड ड्रॉ {kw} kW > स्वीकृत 4 kW" },
   sanctionedLoadTicker: { en: "Sanctioned load 4 kW exceeded — PVVNL penalty risk", hi: "स्वीकृत भार 4 kW से ऊपर — PVVNL पेनल्टी का जोखिम" },
-  nameplateSanctionedLoad: { en: "Sanctioned load", hi: "स्वीकृत भार" },
+  nameplateSanctionedLoad: { en: "Sanctioned load (grid draw)", hi: "स्वीकृत भार (ग्रिड ड्रॉ)" },
+
+  // Correction #2 — inverter genuinely hit its 4kW throughput cap while
+  // grid was available; grid (not a trip) covers the rest.
+  inverterAtCapStatus: { en: "Inverter at 4 kW cap — grid supplying the rest", hi: "इन्वर्टर 4 kW कैप पर — बाकी ग्रिड से मिल रहा है" },
 } as const
 
 export type LabelKey = keyof typeof LABELS

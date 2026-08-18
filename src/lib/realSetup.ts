@@ -305,11 +305,6 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
   const overloadBand: OverloadBand = gridAvailable ? "none" : getOverloadBand(rawLoadW, PCU_CAP_W);
   const isTripped = pcuTripped || overloadBand === "critical";
 
-  // NEW advisory (03_ASBUILT §2.2(e)) — PVVNL sanctioned load (billing limit,
-  // not a hardware/trip limit) is exceeded while drawing from grid. Never
-  // trips; surfaced as a Grid-node chip + ticker line, not systemStatus.
-  const sanctionedLoadExceeded = gridAvailable && rawLoadW > SANCTIONED_LOAD_W;
-
   if (isTripped) {
     return {
       solarW: 0,
@@ -328,7 +323,11 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
       statusKey: "overloadTripped",
       curtailedW: 0,
       atDodFloor: !batteryEffectivelyOff && batterySoc <= LOW_SOC_CUTOFF[batteryType] + 0.01 && LOW_SOC_CUTOFF[batteryType] >= 0.5,
-      sanctionedLoadExceeded,
+      // 03_ASBUILT §2.2(e) correction #2 (owner's 2nd question, 2026-08-18):
+      // the advisory tracks what the PVVNL METER actually sees — gridImportW,
+      // not total household load — and gridImportW is forced 0 while
+      // tripped/offline, so the advisory can never be true here.
+      sanctionedLoadExceeded: false,
     };
   }
 
@@ -344,6 +343,13 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
   // charged into the battery, nor exported to grid — silently wasted unless
   // surfaced in the UI. Only set >0 in the surplus/day branches below.
   let curtailedW = 0;
+  // 03_ASBUILT §2.2(e) correction #2 (owner's 2nd question, 2026-08-18):
+  // true when grid had to top up load specifically because the INVERTER
+  // itself hit its PCU_CAP_W throughput ceiling (solar-to-load +
+  // battery-discharge-to-load == cap) — distinct from grid simply covering
+  // a gap because the battery happens to be off/empty. Drives the
+  // "Inverter at 4 kW cap — grid supplying the rest" status copy.
+  let inverterAtCap = false;
 
   // R1 (code review): chargeFromSolar()/chargeFromGrid() must be ADDITIVE —
   // HYBRID mode calls both in the same tick (solar first, grid top-up
@@ -394,32 +400,82 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
   }
 
   // ── PCU mode: Solar → Battery → Grid (always, no day/night switch) ──
+  // Used directly for pcuMode "pcu", and for SMART's day branch.
   function runPcuChain() {
-    if (surplus >= 0) {
-      const charged = chargeFromSolar(surplus);
-      curtailedW = Math.max(0, surplus - charged);
+    if (!gridAvailable) {
+      // ── Grid OFF — UNCHANGED from before the 2026-08-18 corrections. An
+      // over-cap load here is instead caught upstream by overloadBand
+      // (computed before this chain runs — critical loads never even reach
+      // this function, they early-return via isTripped above). ──
+      if (surplus >= 0) {
+        const charged = chargeFromSolar(surplus);
+        curtailedW = Math.max(0, surplus - charged);
+        systemStatus = charged > 0
+          ? "Solar poora load de raha hai, battery bhi charge ho rahi hai"
+          : !batteryEffectivelyOff
+            ? "Battery full — extra solar is waste ho rahi hai (net-meter nahi hai is mode mein)"
+            : "Battery disconnected — solar se seedha load chal raha hai";
+      } else {
+        const discharged = dischargeToward(deficit);
+        const stillDeficit = deficit - discharged;
+        if (stillDeficit > 1) {
+          systemOffline = true;
+          systemStatus = "Solar kam, battery khali, grid bhi nahi — system offline";
+        } else {
+          systemStatus = "Solar kam — battery se load chal raha hai";
+        }
+      }
+      return;
+    }
+
+    // ── Grid ON — 03_ASBUILT §2.2(e) correction #2 (owner's 2nd question,
+    // 2026-08-18, "sanctioned load exceed kaise ho gaya jab 4018W solar se
+    // hai aur 1845 grid se?"): correction #1 only silenced the false trip
+    // alarm — the energy FLOWS were still letting solar-to-load +
+    // battery-discharge-to-load add up to more than the inverter can
+    // physically push (e.g. solar 4018 + battery 1440 = 5458W > 4kW cap).
+    // Chain order (Solar → Battery → Grid) is preserved WITHIN that cap;
+    // grid covers whatever the inverter genuinely can't carry. ──
+    const solarToLoad = Math.min(Math.max(solarW, 0), rawLoadW, PCU_CAP_W);
+    const solarForCharge = Math.max(0, solarW - solarToLoad);
+    const remainingLoad = rawLoadW - solarToLoad;
+
+    if (remainingLoad <= 0) {
+      // Solar alone (within the cap) covers the load, same vocabulary as
+      // the old "surplus" branch — no grid needed at all.
+      const charged = chargeFromSolar(solarForCharge);
+      curtailedW = Math.max(0, solarForCharge - charged);
       systemStatus = charged > 0
         ? "Solar poora load de raha hai, battery bhi charge ho rahi hai"
         : !batteryEffectivelyOff
           ? "Battery full — extra solar is waste ho rahi hai (net-meter nahi hai is mode mein)"
           : "Battery disconnected — solar se seedha load chal raha hai";
+      return;
+    }
+
+    // Solar (up to the cap) isn't enough — battery is next in the chain,
+    // bounded by BOTH its own C-rate (inside dischargeToward) AND whatever
+    // inverter throughput headroom solar didn't already use.
+    const inverterHeadroomW = PCU_CAP_W - solarToLoad;
+    const discharged = dischargeToward(Math.min(remainingLoad, inverterHeadroomW));
+    // solarForCharge and a battery discharge can never both be >0 here —
+    // solarForCharge > 0 only happens when solar itself hit the cap
+    // (solarToLoad === PCU_CAP_W), which forces inverterHeadroomW to 0.
+    const charged = solarForCharge > 0 ? chargeFromSolar(solarForCharge) : 0;
+    curtailedW = Math.max(0, solarForCharge - charged);
+
+    const stillDeficit = remainingLoad - discharged;
+    if (stillDeficit > 1) {
+      gridImportW = stillDeficit;
+      netMeterWh -= stillDeficit * TICK_HOURS;
+      inverterAtCap = solarToLoad + discharged >= PCU_CAP_W - 1;
+      systemStatus = inverterAtCap
+        ? "Inverter 4 kW cap par — baaki grid se aa raha hai"
+        : discharged > 0
+          ? "Solar kam — battery + grid dono se load chal raha hai"
+          : "Battery khali/band — grid se load chal raha hai";
     } else {
-      const discharged = dischargeToward(deficit);
-      const stillDeficit = deficit - discharged;
-      if (stillDeficit > 1) {
-        if (gridAvailable) {
-          gridImportW = stillDeficit;
-          netMeterWh -= stillDeficit * TICK_HOURS;
-          systemStatus = discharged > 0
-            ? "Solar kam — battery + grid dono se load chal raha hai"
-            : "Battery khali/band — grid se load chal raha hai";
-        } else {
-          systemOffline = true;
-          systemStatus = "Solar kam, battery khali, grid bhi nahi — system offline";
-        }
-      } else {
-        systemStatus = "Solar kam — battery se load chal raha hai";
-      }
+      systemStatus = "Solar kam — battery se load chal raha hai";
     }
   }
 
@@ -496,16 +552,38 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
         }
       }
     } else if (surplus >= 0) {
-      const charged = chargeFromSolar(surplus);
-      const leftover = surplus - charged;
-      if (leftover > 1) {
-        gridExportW = leftover;
-        netMeterWh += leftover * TICK_HOURS;
-        systemStatus = charged > 0
-          ? "Battery charge ho rahi hai, extra solar grid ko export ho raha hai"
-          : "Battery full — poora surplus solar grid ko export ho raha hai";
+      // solarW >= rawLoadW overall, but 03_ASBUILT §2.2(e) correction #2:
+      // the inverter can still only PUSH PCU_CAP_W to load at once — if the
+      // load itself exceeds that (rare with the as-built 4.8kWp array, but
+      // possible), grid tops up the difference even though solar
+      // "technically" covers it on paper. Battery stays reserved either way
+      // (GRID EXPORT chain: Solar → Grid → Battery).
+      if (gridAvailable && rawLoadW > PCU_CAP_W) {
+        const solarToLoad = PCU_CAP_W;
+        const remainingLoad = rawLoadW - solarToLoad;
+        gridImportW = remainingLoad;
+        netMeterWh -= remainingLoad * TICK_HOURS;
+        inverterAtCap = true;
+        const solarForChargeOrExport = solarW - solarToLoad;
+        const charged = solarForChargeOrExport > 0 ? chargeFromSolar(solarForChargeOrExport) : 0;
+        const leftover = solarForChargeOrExport - charged;
+        if (leftover > 1) {
+          gridExportW = leftover;
+          netMeterWh += leftover * TICK_HOURS;
+        }
+        systemStatus = "Inverter 4 kW cap par — baaki grid se aa raha hai";
       } else {
-        systemStatus = "Solar se battery charge ho rahi hai";
+        const charged = chargeFromSolar(surplus);
+        const leftover = surplus - charged;
+        if (leftover > 1) {
+          gridExportW = leftover;
+          netMeterWh += leftover * TICK_HOURS;
+          systemStatus = charged > 0
+            ? "Battery charge ho rahi hai, extra solar grid ko export ho raha hai"
+            : "Battery full — poora surplus solar grid ko export ho raha hai";
+        } else {
+          systemStatus = "Solar se battery charge ho rahi hai";
+        }
       }
     } else {
       // R2 (code review): the declared GRID EXPORT chain is
@@ -514,9 +592,21 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
       // deficit must be topped up from grid FIRST, battery is the last
       // resort, not the first responder.
       if (gridAvailable) {
-        gridImportW = deficit;
-        netMeterWh -= deficit * TICK_HOURS;
-        systemStatus = "Solar kam — grid se load chal raha hai (battery reserved, GRID EXPORT chain)";
+        // 03_ASBUILT §2.2(e) correction #2 — solar-to-load capped at
+        // PCU_CAP_W (matters when solarW itself exceeds the cap); battery
+        // stays reserved, grid covers everything beyond the capped solar
+        // contribution.
+        const solarToLoad = Math.min(Math.max(solarW, 0), rawLoadW, PCU_CAP_W);
+        const solarForCharge = Math.max(0, solarW - solarToLoad);
+        const remainingLoad = rawLoadW - solarToLoad;
+        gridImportW = remainingLoad;
+        netMeterWh -= remainingLoad * TICK_HOURS;
+        const charged = solarForCharge > 0 ? chargeFromSolar(solarForCharge) : 0;
+        curtailedW = Math.max(0, solarForCharge - charged);
+        inverterAtCap = solarToLoad >= PCU_CAP_W - 1;
+        systemStatus = inverterAtCap
+          ? "Inverter 4 kW cap par — baaki grid se aa raha hai"
+          : "Solar kam — grid se load chal raha hai (battery reserved, GRID EXPORT chain)";
       } else {
         const discharged = dischargeToward(deficit);
         if (discharged >= deficit - 1) {
@@ -529,14 +619,24 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
     }
   }
 
-  // ── Status key override — overload band takes priority, then DoD floor ──
+  // ── Status key override — overload band takes priority, then DoD floor,
+  // then the informational "inverter at cap" note. ──
   let statusKey: LabelKey | undefined;
   const atDodFloor = !batteryEffectivelyOff && batterySoc <= lowCutoff + 0.01 && lowCutoff >= 0.5;
   if (!systemOffline) {
     if (overloadBand === "red") statusKey = "overloadRed";
     else if (overloadBand === "amber") statusKey = "overloadAmber";
     else if (atDodFloor) statusKey = "batteryDodFloor";
+    else if (inverterAtCap) statusKey = "inverterAtCapStatus";
   }
+
+  // 03_ASBUILT §2.2(e) correction #2 (owner's 2nd question, 2026-08-18,
+  // "sanctioned load exceed kaise ho gaya jab 4018W solar se hai aur 1845
+  // grid se?"): the PVVNL meter only ever sees gridImportW — total
+  // household load (solar + battery + grid combined) is never what trips
+  // the sanction. Computed here, AFTER every mode branch has finalised
+  // gridImportW (not from rawLoadW at the top of the function anymore).
+  const sanctionedLoadExceeded = gridAvailable && gridImportW > SANCTIONED_LOAD_W;
 
   return {
     solarW,

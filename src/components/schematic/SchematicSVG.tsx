@@ -476,7 +476,7 @@ function BatteryNodeControls({ isMobile = false }: { isMobile?: boolean }) {
 
 // ─── Grid node controls (FIX 5 + FIX 9) ──────────────────────────────────
 function GridNodeControls() {
-  const { gridAvailable, setGridAvailable, mode, simView, lang, sanctionedLoadExceeded } = useSimStore();
+  const { gridAvailable, setGridAvailable, mode, simView, lang, sanctionedLoadExceeded, gridImportW } = useSimStore();
   const isRealSetup = simView === "real-setup";
 
   return (
@@ -498,10 +498,14 @@ function GridNodeControls() {
       )}
       {/* 03_ASBUILT §2.2(e) — PVVNL sanctioned-load advisory (billing risk,
           never a trip). Amber, distinct from the red inverter-trip ring
-          (which only ever shows when grid is OFF, see realSetup.ts). */}
+          (which only ever shows when grid is OFF, see realSetup.ts).
+          Correction #2 (owner's 2nd question, 2026-08-18): tracks the
+          actual GRID DRAW (gridImportW, what the PVVNL meter sees) — not
+          total household load, which can be well above 4kW on solar+
+          battery alone without ever touching the sanction. */}
       {isRealSetup && sanctionedLoadExceeded && (
         <div style={{ fontSize: 9, color: "#F59E0B", lineHeight: 1.2, fontWeight: 600 }}>
-          ⚠ {L(lang, "sanctionedLoadChip")}
+          ⚠ {L(lang, "sanctionedLoadChip").replace("{kw}", (gridImportW / 1000).toFixed(1))}
         </div>
       )}
     </div>
