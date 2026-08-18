@@ -9,6 +9,15 @@ export type FlowType =
   | "grid-export"
   | "load";
 
+// ─── Real Setup — House No. 89 (as-built mode) ──────────────────────────────
+// simView is a PEER of the 3 Learn architectures (Mode), not a replacement.
+// See 03_ASBUILT.md + 03_REAL_SETUP_DESIGN.md — Developer Handoff Checklist.
+export type SimView = "learn" | "real-setup";
+export type ConnectionId = "connection-1" | "connection-2";
+// UTL Sigma UGE5048 front-panel modes, priority chains verbatim from the manual.
+export type PcuMode = "pcu" | "smart" | "hybrid-pcu" | "grid-export";
+export type OverloadBand = "none" | "amber" | "red" | "critical";
+
 export interface ApplianceData {
   id: string;
   name: string;           // English name

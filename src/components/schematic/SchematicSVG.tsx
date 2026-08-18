@@ -7,9 +7,37 @@ import { calcBackupHours } from "@/lib/simulation";
 import { PowerFlowLine } from "./PowerFlowLine";
 import { ParticleStream } from "./ParticleStream";
 import { ComponentNode } from "./ComponentNode";
+import { OverloadWatcher } from "./OverloadWatcher";
 import { ApplianceGrid } from "@/components/controls/ApplianceGrid";
+import { RealSetupNameplate } from "@/components/RealSetupNameplate";
 import { L } from "@/lib/i18n";
 import { fmtRs } from "@/lib/tariff";
+import {
+  PCU_CAP_W,
+  PCU_EFF,
+  NAMEPLATE,
+  PCU_PRIORITY_CHAINS,
+} from "@/lib/realSetup";
+import type { PcuMode, OverloadBand } from "@/lib/types";
+
+// ─── PCU-mode badge initials (Real Setup — inverter node badge) ────────────
+const PCU_MODE_BADGE: Record<PcuMode, string> = {
+  pcu: "PCU",
+  smart: "SMART",
+  "hybrid-pcu": "HYBRID",
+  "grid-export": "G-EXP",
+};
+
+/** House-node ring level derived from overloadBand + the latched trip state. */
+function getNodeOverloadLevel(
+  band: OverloadBand,
+  tripped: boolean
+): "none" | "amber" | "red" | "tripped" {
+  if (tripped) return "tripped";
+  if (band === "amber") return "amber";
+  if (band === "red" || band === "critical") return "red";
+  return "none";
+}
 
 // ─── Layout (viewBox 0 0 1000 370) — pure LEFT-TO-RIGHT pipeline ──────────────
 //
@@ -135,7 +163,8 @@ function CompactToggle({
 
 // ─── Solar node controls (FIX 3 + FIX 5 + FIX 8) ─────────────────────────
 function SolarNodeControls() {
-  const { solarOn, toggleSolar, panelKwp, setPanelKwp, lang } = useSimStore();
+  const { solarOn, toggleSolar, panelKwp, setPanelKwp, lang, simView } = useSimStore();
+  const isRealSetup = simView === "real-setup";
 
   return (
     <div
@@ -155,18 +184,24 @@ function SolarNodeControls() {
         </span>
       </div>
 
-      {/* Capacity dropdown */}
-      <select
-        value={panelKwp}
-        onChange={(e) => setPanelKwp(Number(e.target.value))}
-        disabled={!solarOn}
-        style={{ ...SELECT_STYLE, opacity: solarOn ? 1 : 0.45 }}
-        aria-label="Solar panel capacity"
-      >
-        {SOLAR_KWP_OPTIONS.map((o) => (
-          <option key={o.kwp} value={o.kwp}>{o.label}</option>
-        ))}
-      </select>
+      {/* Capacity — fixed nameplate value in Real Setup (as-built 4.8 kWp), editable dropdown in Learn */}
+      {isRealSetup ? (
+        <div style={{ ...SELECT_STYLE, cursor: "default", opacity: solarOn ? 1 : 0.45 }}>
+          {NAMEPLATE.module.countPerConnection} × 600W = {panelKwp} kWp
+        </div>
+      ) : (
+        <select
+          value={panelKwp}
+          onChange={(e) => setPanelKwp(Number(e.target.value))}
+          disabled={!solarOn}
+          style={{ ...SELECT_STYLE, opacity: solarOn ? 1 : 0.45 }}
+          aria-label="Solar panel capacity"
+        >
+          {SOLAR_KWP_OPTIONS.map((o) => (
+            <option key={o.kwp} value={o.kwp}>{o.label}</option>
+          ))}
+        </select>
+      )}
 
       {/* Info line */}
       <div style={{ fontSize: 10, color: solarOn ? "#F6C90E88" : "#47556977", lineHeight: 1 }}>
@@ -212,14 +247,18 @@ function BatteryNodeControls() {
     gridAvailable,
     socLocked, setSocLocked,
     lang,
+    simView,
   } = useSimStore();
+  const isRealSetup = simView === "real-setup";
+  // Transformer-based UGE5048 is ~90% efficient (vs the generic 0.95 used by Learn mode).
+  const effInUse = isRealSetup ? PCU_EFF : INVERTER_EFF;
 
   const handleKwhChange = (kwh: number) => {
     setBatteryKwh(kwh);
   };
 
   const backupHrs = batteryOn && batteryKwh > 0
-    ? calcBackupHours(batterySoc, batteryKwh, batteryType, loadW)
+    ? calcBackupHours(batterySoc, batteryKwh, batteryType, loadW, effInUse)
     : 0;
   const backupDisplay = batteryOn && batteryKwh > 0
     ? backupHrs > 24 ? "24+ hr" : `${backupHrs.toFixed(1)} hr`
@@ -231,7 +270,7 @@ function BatteryNodeControls() {
     : "#EF4444";
 
   // Time estimates — always based on battery spec (max C-rate), not variable solar/grid watts
-  const usableWh = batteryKwh * DOD_FACTOR[batteryType] * INVERTER_EFF * 1000;
+  const usableWh = batteryKwh * DOD_FACTOR[batteryType] * effInUse * 1000;
   const maxChargeW = batteryKwh * 1000 * C_RATE[batteryType];
   const maxDischargeW = maxChargeW; // same C-rate for discharge
 
@@ -351,30 +390,37 @@ function BatteryNodeControls() {
         </div>
       </div>
 
-      {/* Capacity dropdown */}
-      <select
-        value={batteryKwh}
-        onChange={(e) => handleKwhChange(Number(e.target.value))}
-        style={SELECT_STYLE}
-        aria-label="Battery capacity"
-      >
-        {BATTERY_KWH_OPTIONS.map((o) => (
-          <option key={o.kwh} value={o.kwh}>{o.label}</option>
-        ))}
-      </select>
+      {/* Capacity + chemistry — fixed as-built nameplate in Real Setup, editable in Learn */}
+      {isRealSetup ? (
+        <div style={{ ...SELECT_STYLE, cursor: "default" }}>
+          {batteryKwh} kWh — {NAMEPLATE.battery.name}
+        </div>
+      ) : (
+        <>
+          <select
+            value={batteryKwh}
+            onChange={(e) => handleKwhChange(Number(e.target.value))}
+            style={SELECT_STYLE}
+            aria-label="Battery capacity"
+          >
+            {BATTERY_KWH_OPTIONS.map((o) => (
+              <option key={o.kwh} value={o.kwh}>{o.label}</option>
+            ))}
+          </select>
 
-      {/* Type dropdown */}
-      <select
-        value={batteryType}
-        onChange={(e) => setBatteryType(e.target.value as "lifepo4" | "lead-acid")}
-        disabled={!batteryOn}
-        style={{ ...SELECT_STYLE, opacity: batteryOn ? 1 : 0.45 }}
-        aria-label="Battery chemistry"
-      >
-        {BATTERY_TYPE_OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
+          <select
+            value={batteryType}
+            onChange={(e) => setBatteryType(e.target.value as "lifepo4" | "lead-acid")}
+            disabled={!batteryOn}
+            style={{ ...SELECT_STYLE, opacity: batteryOn ? 1 : 0.45 }}
+            aria-label="Battery chemistry"
+          >
+            {BATTERY_TYPE_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </>
+      )}
 
       {/* Ah → kWh relatable breakdown */}
       {ahBreakdown && (
@@ -389,7 +435,8 @@ function BatteryNodeControls() {
 
 // ─── Grid node controls (FIX 5 + FIX 9) ──────────────────────────────────
 function GridNodeControls() {
-  const { gridAvailable, setGridAvailable, mode, lang } = useSimStore();
+  const { gridAvailable, setGridAvailable, mode, simView, lang } = useSimStore();
+  const isRealSetup = simView === "real-setup";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: "4px 2px 0" }}>
@@ -405,7 +452,7 @@ function GridNodeControls() {
       </div>
       {!gridAvailable && (
         <div style={{ fontSize: 10, color: "#EF444488", lineHeight: 1.2 }}>
-          {mode === "on-grid" ? "Solar bhi band" : "Battery backup"}
+          {isRealSetup ? "Battery backup (PCU se)" : mode === "on-grid" ? "Solar bhi band" : "Battery backup"}
         </div>
       )}
     </div>
@@ -414,7 +461,32 @@ function GridNodeControls() {
 
 // ─── Inverter node controls — capacity selector (always-on, no switch) ──────
 function InverterNodeControls() {
-  const { inverterWatts, setInverterWatts, gridAvailable, mode } = useSimStore();
+  const { inverterWatts, setInverterWatts, gridAvailable, mode, simView, pcuMode, overloadBand, lang } = useSimStore();
+
+  if (simView === "real-setup") {
+    const chain = PCU_PRIORITY_CHAINS[pcuMode];
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 4, padding: "4px 2px 0", height: "100%" }}>
+        <div style={{ ...SELECT_STYLE, cursor: "default" }}>
+          {PCU_MODE_BADGE[pcuMode]} — {(PCU_CAP_W / 1000).toFixed(1)} kW battery-mode cap
+        </div>
+        <div style={{ fontSize: 9, color: overloadBand !== "none" ? "#EF4444" : "#64748B", lineHeight: 1.25 }}>
+          {overloadBand === "none"
+            ? `UGE5048 — ${NAMEPLATE.pcu.mainsRating}, ${NAMEPLATE.pcu.efficiency} eff.`
+            : overloadBand === "amber"
+              ? L(lang, "overloadAmber")
+              : L(lang, "overloadRed")}
+        </div>
+        <div style={{ fontSize: 9, color: "#475569", lineHeight: 1.25 }}>
+          {chain.day
+            ? `Day ${chain.day.join("→")} · Night ${(chain.night ?? []).join("→")}`
+            : chain.charge
+              ? `Load ${chain.load.join("→")} · Charge ${chain.charge.join("→")}`
+              : chain.load.join(" → ")}
+        </div>
+      </div>
+    );
+  }
 
   // Overload only bites when grid can't backstop (off-grid, or grid-fail in hybrid/on-grid)
   const gridCanBackstop = gridAvailable && (mode === "on-grid" || mode === "hybrid");
@@ -452,7 +524,7 @@ export function GharDrawerContents({
   isPinned: boolean;
   onPinToggle: () => void;
 }) {
-  const { lang } = useSimStore();
+  const { lang, simView } = useSimStore();
 
   return (
     <div className="flex flex-col h-full">
@@ -498,9 +570,10 @@ export function GharDrawerContents({
         </div>
       </div>
 
-      {/* Body — scrollable appliance grid */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 scrollbar-thin">
+      {/* Body — scrollable appliance grid (+ System Nameplate in Real Setup, Section E) */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 scrollbar-thin flex flex-col gap-3">
         <ApplianceGrid />
+        {simView === "real-setup" && <RealSetupNameplate />}
       </div>
     </div>
   );
@@ -596,7 +669,13 @@ export function SchematicSVG({
     setGharDrawerOpen,
     setGharDrawerPinned,
     lang,
+    simView,
+    pcuMode,
+    pcuTripped,
+    overloadBand,
+    overloadRemainingSec,
   } = useSimStore();
+  const isRealSetup = simView === "real-setup";
 
   const openGharDrawer  = useCallback(() => {
     if (isMobile) {
@@ -609,11 +688,17 @@ export function SchematicSVG({
   const closeGharDrawer = useCallback(() => setGharDrawerOpen(false), [setGharDrawerOpen]);
   const togglePin       = useCallback(() => setGharDrawerPinned(!gharDrawerPinned), [gharDrawerPinned, setGharDrawerPinned]);
 
-  const showBattery = mode === "off-grid" || mode === "hybrid";
-  const showGrid    = mode === "on-grid"  || mode === "hybrid";
+  // Real Setup — House No. 89 always has solar + battery + grid on both
+  // connections (real topology, not a Learn-mode architecture toggle).
+  const showBattery = isRealSetup ? true : mode === "off-grid" || mode === "hybrid";
+  const showGrid    = isRealSetup ? true : mode === "on-grid"  || mode === "hybrid";
 
   const isGridFail       = !gridAvailable;
-  const isOnGridOffline  = mode === "on-grid" && isGridFail;
+  // Anti-islanding blackout flash is a Learn on-grid-only concept — Real Setup's
+  // grid-fail handling is expressed inside runPcuSimulation's own status/offline logic.
+  const isOnGridOffline  = !isRealSetup && mode === "on-grid" && isGridFail;
+
+  const houseOverloadLevel = isRealSetup ? getNodeOverloadLevel(overloadBand, pcuTripped) : "none";
 
   const batteryActive   = showBattery && batterySoc > 0 && batteryOn;
   const effectiveSolarW = solarOn ? solarW : 0;
@@ -631,9 +716,9 @@ export function SchematicSVG({
         className="w-full h-full"
         preserveAspectRatio="xMidYMid meet"
         role="img"
-        aria-label={`Solar power flow diagram — ${mode} mode`}
+        aria-label={isRealSetup ? `Real Setup — House No. 89 power flow diagram — ${pcuMode} PCU mode` : `Solar power flow diagram — ${mode} mode`}
       >
-        <title>{`Solar power flow diagram — ${mode} mode`}</title>
+        <title>{isRealSetup ? `Real Setup — House No. 89 — ${pcuMode} PCU mode` : `Solar power flow diagram — ${mode} mode`}</title>
         <desc>Shows real-time power flow between solar panels, battery, grid, and home load.</desc>
 
         {/* Background grid lines + neon glow filters */}
@@ -875,6 +960,7 @@ export function SchematicSVG({
             iconType="sun"
             glowColor={solarOn ? "#F6C90E" : "#475569"}
             isActive={effectiveSolarW > 0 && !isOnGridOffline && solarOn}
+            badge={isRealSetup ? `×8/4.8kW` : undefined}
             tooltip="Suraj ki roshni → bijli. Jitni dhoop, utni bijli."
             controls={<SolarNodeControls />}
             controlsHeight={60}
@@ -921,7 +1007,11 @@ export function SchematicSVG({
             <motion.circle
               cx={430} cy={150} r={38}
               fill="none"
-              stroke={inverterOverload ? "#EF4444" : mode === "on-grid" ? "#3B82F6" : mode === "off-grid" ? "#22C55E" : "#06B6D4"}
+              stroke={
+                isRealSetup
+                  ? houseOverloadLevel !== "none" ? "#EF4444" : "#22D3EE"
+                  : inverterOverload ? "#EF4444" : mode === "on-grid" ? "#3B82F6" : mode === "off-grid" ? "#22C55E" : "#06B6D4"
+              }
               strokeWidth={2}
               initial={{ opacity: 0.9, r: 30 }}
               animate={{ opacity: 0, r: 60 }}
@@ -930,20 +1020,31 @@ export function SchematicSVG({
             <ComponentNode
               cx={430} cy={150}
               label={
-                mode === "on-grid"
+                isRealSetup
+                  ? `UGE5048 — ${PCU_MODE_BADGE[pcuMode]}`
+                  : mode === "on-grid"
                   ? L(lang, "onGrid") + (lang === "en" ? " Inverter" : " इन्वर्टर")
                   : mode === "off-grid"
                   ? L(lang, "offGrid") + (lang === "en" ? " Inverter" : " इन्वर्टर")
                   : L(lang, "inverter")
               }
-              subvalue={inverterOverload ? "OVERLOAD!" : `${(useSimStore.getState().inverterWatts / 1000).toFixed(1)} kW`}
+              subvalue={
+                isRealSetup
+                  ? pcuTripped ? "TRIPPED!" : `${(PCU_CAP_W / 1000).toFixed(1)} kW`
+                  : inverterOverload ? "OVERLOAD!" : `${(useSimStore.getState().inverterWatts / 1000).toFixed(1)} kW`
+              }
               iconType="zap"
-              glowColor={inverterOverload ? "#EF4444" : mode === "on-grid" ? "#60A5FA" : mode === "off-grid" ? "#34D399" : "#22D3EE"}
+              glowColor={
+                isRealSetup
+                  ? houseOverloadLevel !== "none" ? "#EF4444" : "#22D3EE"
+                  : inverterOverload ? "#EF4444" : mode === "on-grid" ? "#60A5FA" : mode === "off-grid" ? "#34D399" : "#22D3EE"
+              }
               isActive={!systemOffline}
-              danger={inverterOverload}
+              danger={isRealSetup ? pcuTripped : inverterOverload}
+              badge={isRealSetup ? PCU_MODE_BADGE[pcuMode] : undefined}
               tooltip="DC→AC conversion. Handles all loads in your home."
               controls={<InverterNodeControls />}
-              controlsHeight={40}
+              controlsHeight={isRealSetup ? 46 : 40}
             />
           </motion.g>
         </AnimatePresence>
@@ -994,19 +1095,28 @@ export function SchematicSVG({
             iconType="house"
             glowColor="#F1F5F9"
             isActive={!systemOffline}
+            overloadLevel={houseOverloadLevel}
             tooltip="Tap to manage appliances"
           />
-          {/* Per-hour kWh and cost line — below watt value, above tap hint */}
+          {/* Per-hour kWh and cost line — below watt value, above tap hint
+              (Real Setup amber/red/tripped: overload status + countdown instead) */}
           <text
             x={890} y={178}
             textAnchor="middle"
             dominantBaseline="middle"
-            fill="#64748B"
+            fill={isRealSetup && houseOverloadLevel !== "none" ? (houseOverloadLevel === "amber" ? "#FB923C" : "#EF4444") : "#64748B"}
             fontSize="9"
             fontFamily="Inter, sans-serif"
+            fontWeight={isRealSetup && houseOverloadLevel !== "none" ? "700" : "400"}
             className="pointer-events-none select-none"
           >
-            {`~${(loadW / 1000).toFixed(2)}kWh | ${fmtRs((loadW / 1000) * 6.50)}${L(lang, "perHour")}`}
+            {isRealSetup && pcuTripped
+              ? L(lang, "overloadTripped")
+              : isRealSetup && houseOverloadLevel === "amber"
+                ? `${L(lang, "overloadAmber")}${overloadRemainingSec !== null ? ` (${overloadRemainingSec}s)` : ""}`
+                : isRealSetup && houseOverloadLevel === "red"
+                  ? `${L(lang, "overloadRed")}${overloadRemainingSec !== null ? ` (${overloadRemainingSec}s)` : ""}`
+                  : `~${(loadW / 1000).toFixed(2)}kWh | ${fmtRs((loadW / 1000) * 6.50)}${L(lang, "perHour")}`}
           </text>
           {/* Tap hint — below node */}
           <text
@@ -1040,8 +1150,11 @@ export function SchematicSVG({
         className="absolute top-2 left-2 px-2 py-1 rounded-md bg-surface-card/80 border border-surface-stroke text-xs text-text-secondary font-mono"
         style={{ pointerEvents: "none" }}
       >
-        {mode.toUpperCase()} MODE
+        {isRealSetup ? `REAL SETUP — ${PCU_MODE_BADGE[pcuMode]} MODE` : `${mode.toUpperCase()} MODE`}
       </div>
+
+      {/* Overload wall-clock countdown — Real Setup only, no UI of its own */}
+      {isRealSetup && <OverloadWatcher />}
 
       {/* Ghar Appliance Drawer — float mode only (pinned mode renders in DiagramLayout as docked aside)
           Suppressed on mobile — appliances are always visible below the diagram */}

@@ -4,7 +4,42 @@ import dynamic from "next/dynamic";
 import { useSimStore } from "@/store/simulation-store";
 import { GharDrawerContents } from "@/components/schematic/SchematicSVG";
 import { ApplianceGrid } from "@/components/controls/ApplianceGrid";
+import { RealSetupNameplate } from "@/components/RealSetupNameplate";
+import { L } from "@/lib/i18n";
+import type { ConnectionId } from "@/lib/types";
 import { useCallback, useEffect, useRef, useState } from "react";
+
+// B — mobile connection toggle (full-width 2-seg), sits directly above the
+// "Appliances / Tap to toggle" header, per 03_REAL_SETUP_DESIGN.md Section B.
+function MobileConnectionToggle() {
+  const { activeConnection, setActiveConnection, lang } = useSimStore();
+  const OPTS: { id: ConnectionId; titleKey: "connection1Title" | "connection2Title"; subKey: "connection1Sub" | "connection2Sub" }[] = [
+    { id: "connection-1", titleKey: "connection1Title", subKey: "connection1Sub" },
+    { id: "connection-2", titleKey: "connection2Title", subKey: "connection2Sub" },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-1.5 px-3 pt-2.5" role="group" aria-label={L(lang, "otherConnectionLbl")}>
+      {OPTS.map((o) => {
+        const isActive = activeConnection === o.id;
+        return (
+          <button
+            key={o.id}
+            onClick={() => setActiveConnection(o.id)}
+            aria-pressed={isActive}
+            className={`min-h-[44px] rounded-lg border px-2 py-1.5 text-center transition-all ${
+              isActive
+                ? "border-solar bg-solar/10 text-solar"
+                : "border-surface-stroke bg-surface-card/40 text-text-secondary"
+            }`}
+          >
+            <div className="text-[11px] font-semibold">{L(lang, o.titleKey)}</div>
+            <div className="text-[9px] opacity-70">{L(lang, o.subKey)}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 // SSR-off for heavy animated SVG (Framer Motion + particles)
 const SchematicSVG = dynamic(
@@ -21,7 +56,9 @@ export function DiagramLayout() {
     gharDrawerPinned,
     setGharDrawerOpen,
     setGharDrawerPinned,
+    simView,
   } = useSimStore();
+  const isRealSetup = simView === "real-setup";
 
   const [isMobile, setIsMobile] = useState(false);
   // Ref to the appliances panel so Ghar node click can scroll it into view on mobile
@@ -74,6 +111,9 @@ export function DiagramLayout() {
             WebkitBackdropFilter: "blur(12px)",
           }}
         >
+          {/* B — Connection toggle, mobile-only, above the Appliances header */}
+          {isRealSetup && <MobileConnectionToggle />}
+
           {/* Panel header */}
           <div
             className="flex items-center justify-between px-4 py-2.5 border-b shrink-0 sticky top-0 z-10"
@@ -91,8 +131,10 @@ export function DiagramLayout() {
               Tap to toggle
             </span>
           </div>
-          <div className="p-3">
+          <div className="p-3 flex flex-col gap-3">
             <ApplianceGrid />
+            {/* E — System Nameplate, appended at the bottom of the mobile scroll */}
+            {isRealSetup && <RealSetupNameplate />}
           </div>
         </div>
       </div>

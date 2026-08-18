@@ -1,6 +1,9 @@
 import { TopBar } from "@/components/TopBar";
 import { ModeSidebar } from "@/components/ModeSidebar";
 import { DiagramLayout } from "@/components/DiagramLayout";
+import { RealSetupTicker } from "@/components/RealSetupTicker";
+import { RealSetupComparisonStrip } from "@/components/RealSetupComparisonStrip";
+import { RealSetupToast } from "@/components/RealSetupToast";
 
 export default function Home() {
   return (
@@ -11,6 +14,13 @@ export default function Home() {
 
       {/* TOP BAR */}
       <TopBar />
+
+      {/* F.1 — Family Rules ticker + B — connection comparison strip (Real Setup only, no-op otherwise) */}
+      <RealSetupTicker />
+      <RealSetupComparisonStrip />
+
+      {/* F.2 — contextual rule-violation toast (fixed overlay, Real Setup only) */}
+      <RealSetupToast />
 
       {/*
         MAIN BODY — fills remaining height

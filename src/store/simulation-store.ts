@@ -1,12 +1,84 @@
 "use client";
 
 import { create } from "zustand";
-import type { Mode, DayType, BatteryType, SimState } from "@/lib/types";
+import type {
+  Mode,
+  DayType,
+  BatteryType,
+  SimState,
+  ConnectionId,
+  PcuMode,
+  OverloadBand,
+  ApplianceQtyEntry,
+} from "@/lib/types";
 import { runSimulation } from "@/lib/simulation";
 import { calcTotalLoadQty } from "@/lib/appliances";
 import { getSolarW } from "@/lib/solar-curve";
 import { DEFAULT_APPLIANCES_ON, DEFAULT_APPLIANCE_QTYS } from "@/lib/appliances";
 import type { ScenarioPreset } from "@/lib/types";
+import { L } from "@/lib/i18n";
+import {
+  runPcuSimulation,
+  otherConnection,
+  CONNECTION_DEFAULT_APPLIANCES,
+  CONNECTION_DEFAULT_BATTERY_SOC,
+  REAL_SETUP_PANEL_KWP,
+  REAL_SETUP_BATTERY_KWH,
+  REAL_SETUP_BATTERY_TYPE,
+  PCU_CAP_W,
+} from "@/lib/realSetup";
+
+// ─── Real Setup snapshot shapes (Developer Handoff Checklist item 1) ───────
+// A "learn snapshot" captures the generic-architecture side of the shared
+// simulation fields so switching to Real Setup and back never regresses
+// Learn mode. A "real-setup snapshot" is the mirror for the other direction.
+interface ArchSnapshot {
+  mode: Mode;
+  panelKwp: number;
+  batteryKwh: number;
+  batteryType: BatteryType;
+  batteryOn: boolean;
+  solarOn: boolean;
+  inverterWatts: number;
+  applianceQtys: ApplianceQtyEntry[];
+  gridOnlyAppliances: Set<string>;
+  batterySoc: number;
+  gridAvailable: boolean;
+  netMeterWh: number;
+  socLocked: boolean;
+}
+interface RealSetupSnapshot extends ArchSnapshot {
+  activeConnection: ConnectionId;
+  pcuMode: PcuMode;
+  netMeterInstalled: boolean;
+  connectionSnapshots: Record<ConnectionId, ConnectionSnapshot>;
+}
+interface ConnectionSnapshot {
+  applianceQtys: ApplianceQtyEntry[];
+  batterySoc: number;
+}
+
+function connectionDefault(id: ConnectionId): ConnectionSnapshot {
+  return {
+    // Real Setup defaults to a single AC unit ON per connection — the
+    // catalog's qty=2 default (both wall units) is left for the user to
+    // discover deliberately, which is what triggers the F.2 2-AC rule toast
+    // (03_ASBUILT.md §3 family rule 3) instead of firing it at boot.
+    applianceQtys: DEFAULT_APPLIANCE_QTYS.map((e) => ({
+      ...e,
+      qty: e.id === "ac" ? 1 : e.qty,
+      isOn: CONNECTION_DEFAULT_APPLIANCES[id].includes(e.id),
+    })),
+    batterySoc: CONNECTION_DEFAULT_BATTERY_SOC[id],
+  };
+}
+
+function defaultConnectionSnapshots(): Record<ConnectionId, ConnectionSnapshot> {
+  return {
+    "connection-1": connectionDefault("connection-1"),
+    "connection-2": connectionDefault("connection-2"),
+  };
+}
 
 interface SimStore extends SimState {
   // Actions
@@ -38,13 +110,107 @@ interface SimStore extends SimState {
   // Language toggle
   lang: "en" | "hi";
   setLang: (l: "en" | "hi") => void;
+
+  // ── Real Setup — House No. 89 (simView is a PEER of Mode, not a replacement) ──
+  simView: "learn" | "real-setup";
+  setSimView: (view: "learn" | "real-setup") => void;
+  activeConnection: ConnectionId;
+  setActiveConnection: (id: ConnectionId) => void;
+  pcuMode: PcuMode;
+  setPcuMode: (mode: PcuMode) => void;
+  netMeterInstalled: boolean;
+  setNetMeterInstalled: (v: boolean) => void;
+  pcuTripped: boolean;
+  setPcuTripped: (v: boolean) => void;
+  overloadBand: OverloadBand;
+  overloadRemainingSec: number | null;
+  setOverloadRemainingSec: (v: number | null) => void;
+  connectionSnapshots: Record<ConnectionId, ConnectionSnapshot>;
+  otherConnectionSummary: { loadW: number; batterySoc: number };
+  learnSnapshot: ArchSnapshot | null;
+  realSetupSnapshot: RealSetupSnapshot | null;
+  /** Generic status-log append (used by RealSetupToast for the F.2 rule toasts). */
+  appendStatusLog: (msg: string) => void;
 }
 
-function computeState(state: Partial<SimState> & { socLocked?: boolean }): Partial<SimState> {
+function computeState(state: Partial<SimStore>): Partial<SimStore> {
+  const simView = state.simView ?? "learn";
+  const lang = state.lang ?? "en";
+  const applianceQtys = state.applianceQtys ?? DEFAULT_APPLIANCE_QTYS;
+  const gridOnlyAppliances = state.gridOnlyAppliances ?? new Set<string>();
+  const gridAvailable = state.gridAvailable ?? true;
+  const socLocked = state.socLocked ?? true;
+  const loadW = calcTotalLoadQty(applianceQtys, gridAvailable, gridOnlyAppliances);
+  const appliancesOn = applianceQtys.filter((e) => e.isOn).map((e) => e.id);
+  const prevLog = (state.statusLog as string[]) ?? [];
+
+  // ── Real Setup — House No. 89 branch (separate engine, lib/realSetup.ts) ──
+  if (simView === "real-setup") {
+    const timeHour = state.timeHour ?? 14;
+    const dayType = state.dayType ?? "clear";
+    const batterySoc = state.batterySoc ?? CONNECTION_DEFAULT_BATTERY_SOC["connection-1"];
+    const batteryKwh = state.batteryKwh ?? REAL_SETUP_BATTERY_KWH;
+    const batteryType = state.batteryType ?? REAL_SETUP_BATTERY_TYPE;
+    const batteryOn = state.batteryOn ?? true;
+    const panelKwp = state.panelKwp ?? REAL_SETUP_PANEL_KWP;
+    const solarOn = state.solarOn ?? true;
+    const currentNetMeterWh = state.netMeterWh ?? 0;
+    const pcuMode = state.pcuMode ?? "smart";
+    const netMeterInstalled = state.netMeterInstalled ?? false;
+    const pcuTripped = state.pcuTripped ?? false;
+    const activeConnection = state.activeConnection ?? "connection-1";
+    const connectionSnapshots = state.connectionSnapshots ?? defaultConnectionSnapshots();
+
+    const result = runPcuSimulation({
+      pcuMode,
+      timeHour,
+      dayType,
+      gridAvailable,
+      netMeterInstalled,
+      batterySoc,
+      batteryKwh,
+      batteryType,
+      batteryOn,
+      panelKwp,
+      solarOn,
+      loadW,
+      currentNetMeterWh,
+      pcuTripped,
+    });
+
+    const displayStatus = result.statusKey ? L(lang, result.statusKey) : result.systemStatus;
+    const newLog = [displayStatus, ...prevLog].slice(0, 4);
+
+    const otherId = otherConnection(activeConnection);
+    const otherSnap = connectionSnapshots[otherId];
+    const otherConnectionSummary = otherSnap
+      ? { loadW: calcTotalLoadQty(otherSnap.applianceQtys), batterySoc: otherSnap.batterySoc }
+      : { loadW: 0, batterySoc: 0 };
+
+    return {
+      solarW: result.solarW,
+      loadW: result.loadW,
+      gridImportW: result.gridImportW,
+      gridExportW: result.gridExportW,
+      batteryChargeW: result.batteryChargeW,
+      batteryDischargeW: result.batteryDischargeW,
+      netMeterWh: result.netMeterWh,
+      systemStatus: displayStatus,
+      systemOffline: result.systemOffline,
+      surgeActive: result.surgeActive,
+      inverterOverload: result.inverterOverload,
+      overloadBand: result.overloadBand,
+      batterySoc: socLocked ? batterySoc : result.batteryNewSoc,
+      appliancesOn,
+      statusLog: newLog,
+      otherConnectionSummary,
+    };
+  }
+
+  // ── Learn mode (existing generic on-grid/off-grid/hybrid engine — UNCHANGED) ──
   const mode = state.mode ?? "hybrid";
   const timeHour = state.timeHour ?? 14;
   const dayType = state.dayType ?? "clear";
-  const gridAvailable = state.gridAvailable ?? true;
   const batterySoc = state.batterySoc ?? 0.80;
   const batteryKwh = state.batteryKwh ?? 5;
   const batteryType = state.batteryType ?? "lifepo4";
@@ -52,12 +218,7 @@ function computeState(state: Partial<SimState> & { socLocked?: boolean }): Parti
   const panelKwp = state.panelKwp ?? 5;
   const solarOn = state.solarOn ?? true;
   const inverterWatts = state.inverterWatts ?? 6200;
-  const applianceQtys = state.applianceQtys ?? DEFAULT_APPLIANCE_QTYS;
-  const gridOnlyAppliances = state.gridOnlyAppliances ?? new Set<string>();
   const currentNetMeterWh = state.netMeterWh ?? 0;
-  const socLocked = state.socLocked ?? true;
-
-  const loadW = calcTotalLoadQty(applianceQtys, gridAvailable, gridOnlyAppliances);
 
   const result = runSimulation({
     mode,
@@ -75,11 +236,6 @@ function computeState(state: Partial<SimState> & { socLocked?: boolean }): Parti
     currentNetMeterWh,
   });
 
-  // Derive legacy appliancesOn for scenario/schematic compat
-  const appliancesOn = applianceQtys.filter((e) => e.isOn).map((e) => e.id);
-
-  // Append to status log
-  const prevLog = (state.statusLog as string[]) ?? [];
   const newLog = [result.systemStatus, ...prevLog].slice(0, 4);
 
   return {
@@ -94,6 +250,7 @@ function computeState(state: Partial<SimState> & { socLocked?: boolean }): Parti
     systemOffline: result.systemOffline,
     surgeActive: result.surgeActive,
     inverterOverload: result.inverterOverload,
+    overloadBand: "none",
     // When SoC is locked, preserve the user-set batterySoc; otherwise let simulation drive it
     batterySoc: socLocked ? batterySoc : result.batteryNewSoc,
     appliancesOn,
@@ -101,7 +258,23 @@ function computeState(state: Partial<SimState> & { socLocked?: boolean }): Parti
   };
 }
 
-const INITIAL_STATE: SimState & { socLocked: boolean; gharDrawerOpen: boolean; gharDrawerPinned: boolean; lang: "en" | "hi" } = {
+const INITIAL_STATE: SimState & {
+  socLocked: boolean;
+  gharDrawerOpen: boolean;
+  gharDrawerPinned: boolean;
+  lang: "en" | "hi";
+  simView: "learn" | "real-setup";
+  activeConnection: ConnectionId;
+  pcuMode: PcuMode;
+  netMeterInstalled: boolean;
+  pcuTripped: boolean;
+  overloadBand: OverloadBand;
+  overloadRemainingSec: number | null;
+  connectionSnapshots: Record<ConnectionId, ConnectionSnapshot>;
+  otherConnectionSummary: { loadW: number; batterySoc: number };
+  learnSnapshot: ArchSnapshot | null;
+  realSetupSnapshot: RealSetupSnapshot | null;
+} = {
   mode: "hybrid",
   timeHour: 14,
   dayType: "clear",
@@ -121,6 +294,18 @@ const INITIAL_STATE: SimState & { socLocked: boolean; gharDrawerOpen: boolean; g
   gharDrawerPinned: true,
   lang: "en",
 
+  simView: "learn",
+  activeConnection: "connection-1",
+  pcuMode: "smart",
+  netMeterInstalled: false,
+  pcuTripped: false,
+  overloadBand: "none",
+  overloadRemainingSec: null,
+  connectionSnapshots: defaultConnectionSnapshots(),
+  otherConnectionSummary: { loadW: 0, batterySoc: 0 },
+  learnSnapshot: null,
+  realSetupSnapshot: null,
+
   solarW: getSolarW(14, "clear", 5),
   loadW: calcTotalLoadQty(DEFAULT_APPLIANCE_QTYS),
   gridImportW: 0,
@@ -137,7 +322,7 @@ const INITIAL_STATE: SimState & { socLocked: boolean; gharDrawerOpen: boolean; g
 
 // Apply initial computation
 const computed = computeState(INITIAL_STATE);
-const BOOT_STATE: SimState & { socLocked: boolean; gharDrawerOpen: boolean; gharDrawerPinned: boolean; lang: "en" | "hi" } = { ...INITIAL_STATE, ...computed };
+const BOOT_STATE = { ...INITIAL_STATE, ...computed } as typeof INITIAL_STATE;
 
 export const useSimStore = create<SimStore>((set, get) => ({
   ...BOOT_STATE,
@@ -311,5 +496,209 @@ export const useSimStore = create<SimStore>((set, get) => ({
 
   setLang(lang: "en" | "hi") {
     set({ lang });
+  },
+
+  // ── Real Setup actions ──────────────────────────────────────────────────
+
+  setSimView(view) {
+    set((s) => {
+      if (view === s.simView) return {};
+
+      if (view === "real-setup") {
+        const learnSnapshot: ArchSnapshot = {
+          mode: s.mode,
+          panelKwp: s.panelKwp,
+          batteryKwh: s.batteryKwh,
+          batteryType: s.batteryType,
+          batteryOn: s.batteryOn,
+          solarOn: s.solarOn,
+          inverterWatts: s.inverterWatts,
+          applianceQtys: s.applianceQtys.map((e) => ({ ...e })),
+          gridOnlyAppliances: new Set(s.gridOnlyAppliances),
+          batterySoc: s.batterySoc,
+          gridAvailable: s.gridAvailable,
+          netMeterWh: s.netMeterWh,
+          socLocked: s.socLocked,
+        };
+
+        let next: Partial<SimStore>;
+        if (s.realSetupSnapshot) {
+          const rs = s.realSetupSnapshot;
+          next = {
+            panelKwp: rs.panelKwp,
+            batteryKwh: rs.batteryKwh,
+            batteryType: rs.batteryType,
+            batteryOn: rs.batteryOn,
+            solarOn: rs.solarOn,
+            inverterWatts: rs.inverterWatts,
+            applianceQtys: rs.applianceQtys.map((e) => ({ ...e })),
+            gridOnlyAppliances: new Set(rs.gridOnlyAppliances),
+            batterySoc: rs.batterySoc,
+            gridAvailable: rs.gridAvailable,
+            netMeterWh: rs.netMeterWh,
+            socLocked: rs.socLocked,
+            activeConnection: rs.activeConnection,
+            pcuMode: rs.pcuMode,
+            netMeterInstalled: rs.netMeterInstalled,
+            connectionSnapshots: rs.connectionSnapshots,
+            pcuTripped: false,
+            overloadRemainingSec: null,
+          };
+        } else {
+          // First-ever visit to Real Setup — apply the as-built defaults
+          // (03_ASBUILT.md §4.1): 4.8 kWp, UGE5048, 7.2 kWh lead-acid @ 50% DoD,
+          // SMART mode default, net-meter OFF, grid ON, Bijnor clear day.
+          const conn: ConnectionId = "connection-1";
+          const snapshots = defaultConnectionSnapshots();
+          next = {
+            panelKwp: REAL_SETUP_PANEL_KWP,
+            batteryKwh: REAL_SETUP_BATTERY_KWH,
+            batteryType: REAL_SETUP_BATTERY_TYPE,
+            batteryOn: true,
+            solarOn: true,
+            inverterWatts: PCU_CAP_W,
+            applianceQtys: snapshots[conn].applianceQtys.map((e) => ({ ...e })),
+            gridOnlyAppliances: new Set<string>(),
+            batterySoc: snapshots[conn].batterySoc,
+            gridAvailable: true,
+            dayType: "clear",
+            netMeterWh: 0,
+            socLocked: true,
+            activeConnection: conn,
+            pcuMode: "smart",
+            netMeterInstalled: false,
+            connectionSnapshots: snapshots,
+            pcuTripped: false,
+            overloadRemainingSec: null,
+          };
+        }
+
+        const merged = { ...s, ...next, simView: "real-setup" as const };
+        return {
+          ...next,
+          simView: "real-setup",
+          learnSnapshot,
+          ...computeState(merged),
+        } as Partial<SimStore>;
+      }
+
+      // Switching back to Learn
+      const realSetupSnapshot: RealSetupSnapshot = {
+        mode: s.mode,
+        panelKwp: s.panelKwp,
+        batteryKwh: s.batteryKwh,
+        batteryType: s.batteryType,
+        batteryOn: s.batteryOn,
+        solarOn: s.solarOn,
+        inverterWatts: s.inverterWatts,
+        applianceQtys: s.applianceQtys.map((e) => ({ ...e })),
+        gridOnlyAppliances: new Set(s.gridOnlyAppliances),
+        batterySoc: s.batterySoc,
+        gridAvailable: s.gridAvailable,
+        netMeterWh: s.netMeterWh,
+        socLocked: s.socLocked,
+        activeConnection: s.activeConnection,
+        pcuMode: s.pcuMode,
+        netMeterInstalled: s.netMeterInstalled,
+        connectionSnapshots: s.connectionSnapshots,
+      };
+
+      const ln = s.learnSnapshot;
+      const next: Partial<SimStore> = ln
+        ? {
+            mode: ln.mode,
+            panelKwp: ln.panelKwp,
+            batteryKwh: ln.batteryKwh,
+            batteryType: ln.batteryType,
+            batteryOn: ln.batteryOn,
+            solarOn: ln.solarOn,
+            inverterWatts: ln.inverterWatts,
+            applianceQtys: ln.applianceQtys.map((e) => ({ ...e })),
+            gridOnlyAppliances: new Set(ln.gridOnlyAppliances),
+            batterySoc: ln.batterySoc,
+            gridAvailable: ln.gridAvailable,
+            netMeterWh: ln.netMeterWh,
+            socLocked: ln.socLocked,
+          }
+        : {};
+
+      const merged = { ...s, ...next, simView: "learn" as const };
+      return {
+        ...next,
+        simView: "learn",
+        realSetupSnapshot,
+        pcuTripped: false,
+        overloadRemainingSec: null,
+        ...computeState(merged),
+      } as Partial<SimStore>;
+    });
+  },
+
+  setActiveConnection(id) {
+    set((s) => {
+      if (id === s.activeConnection) return {};
+      const stashed: Record<ConnectionId, ConnectionSnapshot> = {
+        ...s.connectionSnapshots,
+        [s.activeConnection]: {
+          applianceQtys: s.applianceQtys.map((e) => ({ ...e })),
+          batterySoc: s.batterySoc,
+        },
+      };
+      const incoming = stashed[id] ?? connectionDefault(id);
+      const next = {
+        activeConnection: id,
+        applianceQtys: incoming.applianceQtys.map((e) => ({ ...e })),
+        batterySoc: incoming.batterySoc,
+        connectionSnapshots: stashed,
+        netMeterWh: 0,
+        pcuTripped: false,
+        overloadRemainingSec: null,
+      };
+      const merged = { ...s, ...next };
+      return { ...next, ...computeState(merged) } as Partial<SimStore>;
+    });
+  },
+
+  setPcuMode(mode) {
+    set((s) => {
+      // GRID EXPORT is gated behind netMeterInstalled — the chip is disabled
+      // in the UI too, this is the belt-and-braces store-level guard.
+      if (mode === "grid-export" && !s.netMeterInstalled) return {};
+      const next = { pcuMode: mode };
+      const merged = { ...s, ...next };
+      return { ...next, ...computeState(merged) } as Partial<SimStore>;
+    });
+  },
+
+  setNetMeterInstalled(v) {
+    set((s) => {
+      let pcuMode = s.pcuMode;
+      let statusLog = s.statusLog;
+      if (!v && s.pcuMode === "grid-export") {
+        // Turning the net-meter off while GRID EXPORT is active auto-falls-back
+        // to SMART (factory default) with a one-shot toast (Section D).
+        pcuMode = "smart";
+        statusLog = [L(s.lang, "netMeterFallbackToast"), ...s.statusLog].slice(0, 4);
+      }
+      const next = { netMeterInstalled: v, pcuMode, statusLog };
+      const merged = { ...s, ...next };
+      return { ...next, ...computeState(merged) } as Partial<SimStore>;
+    });
+  },
+
+  setPcuTripped(v) {
+    set((s) => {
+      const next = { pcuTripped: v };
+      const merged = { ...s, ...next };
+      return { ...next, ...computeState(merged) } as Partial<SimStore>;
+    });
+  },
+
+  setOverloadRemainingSec(v) {
+    set({ overloadRemainingSec: v });
+  },
+
+  appendStatusLog(msg) {
+    set((s) => ({ statusLog: [msg, ...s.statusLog].slice(0, 4) }));
   },
 }));

@@ -52,6 +52,70 @@ export const LABELS = {
   english:  { en: "EN",     hi: "EN" },
   hindi:    { en: "हिं",    hi: "हिं" },
   backupIn: { en: "Backup", hi: "बैकअप" },
+
+  // --- Real Setup mode (Section A–H, 03_REAL_SETUP_DESIGN.md) ---
+  learnMode:        { en: "Learn",                       hi: "सीखें" },
+  realSetupMode:    { en: "Real Setup — House No. 89",   hi: "असली सेटअप — House No. 89" },
+  realSetupShort:   { en: "Real Setup",                  hi: "असली सेटअप" },
+
+  connection1Title:    { en: "Connection 1",  hi: "कनेक्शन 1" },
+  connection1Sub:      { en: "Arun's side",   hi: "अरुण की तरफ" },
+  connection2Title:    { en: "Connection 2",  hi: "कनेक्शन 2" },
+  connection2Sub:      { en: "Rajat's side",  hi: "रजत की तरफ" },
+  otherConnectionLbl:  { en: "Other connection (tap to switch):", hi: "दूसरा कनेक्शन (बदलने को टैप करें):" },
+
+  pcuModeHeading:      { en: "PCU MODE", hi: "PCU मोड" },
+  pcuModePCU:          { en: "PCU",     hi: "PCU" },
+  pcuModePCUSub:       { en: "Solar → Battery → Grid (always)", hi: "सोलर → बैटरी → ग्रिड (हमेशा)" },
+  pcuModeSMART:        { en: "SMART",   hi: "SMART" },
+  pcuModeSMARTBadge:   { en: "Factory default", hi: "फ़ैक्टरी डिफ़ॉल्ट" },
+  pcuModeSMARTDay:     { en: "Day: Solar → Battery → Grid", hi: "दिन: सोलर → बैटरी → ग्रिड" },
+  pcuModeSMARTNight:   { en: "Night: Grid → Battery", hi: "रात: ग्रिड → बैटरी" },
+  pcuModeHYBRID:       { en: "HYBRID", hi: "HYBRID" },
+  pcuModeHYBRIDLoad:   { en: "Load: Grid → Solar → Battery", hi: "लोड: ग्रिड → सोलर → बैटरी" },
+  pcuModeHYBRIDCharge: { en: "Charge: Solar → Grid", hi: "चार्ज: सोलर → ग्रिड" },
+  pcuModeGRIDEXPORT:   { en: "GRID EXPORT", hi: "GRID EXPORT" },
+  pcuModeGRIDEXPORTSub:{ en: "Solar → Grid → Battery — surplus exported", hi: "सोलर → ग्रिड → बैटरी — बचा हुआ भेजा जाता है" },
+  pcuGridExportDisabled:{ en: "Grid Export disabled — net-meter pending", hi: "Grid Export बंद है — नेट-मीटर लगना बाकी है" },
+
+  netMeterLabel:       { en: "Net-meter installed?", hi: "नेट-मीटर लगा है?" },
+  netMeterOnCopy:      { en: "Bidirectional net-meter present — surplus solar can be exported to DISCOM.", hi: "बाइडायरेक्शनल नेट-मीटर लगा है — बचा हुआ सोलर DISCOM को भेजा जा सकता है।" },
+  netMeterOffCopy:      { en: "Grid Export disabled — net-meter pending", hi: "Grid Export बंद है — नेट-मीटर लगना बाकी है" },
+  netMeterFallbackToast:{ en: "Net-meter turned off — switched back to SMART mode", hi: "नेट-मीटर बंद किया — SMART मोड पर वापस स्विच किया" },
+
+  nameplateTitle:      { en: "System Nameplate", hi: "सिस्टम नेमप्लेट" },
+  nameplateShow:       { en: "Show specs", hi: "स्पेसिफिकेशन देखें" },
+  nameplateHide:       { en: "Hide specs", hi: "स्पेसिफिकेशन छुपाएं" },
+  nameplateModule:     { en: "Module", hi: "मॉड्यूल" },
+  nameplatePCU:        { en: "PCU / Inverter", hi: "PCU / इन्वर्टर" },
+  nameplateBattery:    { en: "Battery Bank", hi: "बैटरी बैंक" },
+  nameplateFootnote:   { en: "Technical specs only — for costs/accounts, ask Rajat directly.", hi: "सिर्फ टेक्निकल जानकारी — पैसों/खाते की जानकारी के लिए रजत से सीधे पूछें।" },
+
+  overloadAmber:       { en: "Overload — trips in 60s if not reduced", hi: "ओवरलोड — 60 सेकंड में ट्रिप होगा अगर लोड कम न किया" },
+  overloadRed:         { en: "Critical overload — trips in 30s", hi: "गंभीर ओवरलोड — 30 सेकंड में ट्रिप होगा" },
+  overloadTripped:     { en: "PCU tripped — reduce load and reset", hi: "PCU ट्रिप हो गया — लोड कम करके रीसेट करें" },
+  batteryDodFloor:     { en: "Battery empty — 50% DoD limit reached (lead-acid)", hi: "बैटरी खाली — 50% DoD लिमिट पूरी (लेड-एसिड)" },
+
+  ruleGeyser:  { en: "Geyser rule: switch AC off before geyser on — never together.", hi: "गीज़र नियम: गीज़र ऑन करने से पहले AC बंद करें — साथ में कभी नहीं।" },
+  ruleEV:      { en: "EV rule: never charge the EV during a power cut — battery empties in 1–2 hrs.", hi: "EV नियम: बिजली कटने पर EV चार्ज न करें — बैटरी 1–2 घंटे में खाली हो जाएगी।" },
+  rule2AC:     { en: "2-AC rule: never run both ACs together on one connection — surge trips the 4 kW PCU.", hi: "2-AC नियम: एक कनेक्शन पर दोनों AC साथ न चलाएं — सर्ज से 4 kW PCU ट्रिप हो जाएगा।" },
+
+  // Extra chrome used by the Real Setup implementation (not literally in the
+  // spec's Copy Register table but required by the same {en,hi} shape).
+  realSetupAria:       { en: "Switch between generic Learn mode and the real House No. 89 setup", hi: "Switch between generic Learn mode and the real House No. 89 setup" },
+  connectionAria:      { en: "Choose active connection", hi: "Choose active connection" },
+  nameplateArraySize:  { en: "Array size", hi: "ऐरे साइज़" },
+  nameplateStcPmax:    { en: "STC Pmax", hi: "STC Pmax" },
+  nameplateVocIsc:     { en: "Voc / Isc", hi: "Voc / Isc" },
+  nameplateVmpImp:     { en: "Vmp / Imp", hi: "Vmp / Imp" },
+  nameplateType:       { en: "Type", hi: "टाइप" },
+  nameplateBatteryModeCap: { en: "Battery-mode cap", hi: "बैटरी-मोड कैप" },
+  nameplateMainsRating:    { en: "Mains rating", hi: "मेन्स रेटिंग" },
+  nameplateSpvCurrent:     { en: "SPV charge current", hi: "SPV चार्ज करंट" },
+  nameplateEfficiency:     { en: "Efficiency (used)", hi: "एफिशिएंसी (उपयोग)" },
+  nameplateBank:           { en: "Bank", hi: "बैंक" },
+  nameplateUsable:         { en: "Usable (50% DoD)", hi: "उपयोग योग्य (50% DoD)" },
+  nameplateLowCut:         { en: "Low-cut", hi: "लो-कट" },
 } as const
 
 export type LabelKey = keyof typeof LABELS

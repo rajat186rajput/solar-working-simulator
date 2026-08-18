@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Sun, Zap, BatteryCharging, Plug, Gauge, House } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -30,6 +30,10 @@ interface ComponentNodeProps {
   controlsHeight?: number;
   /** Whether this node is currently charging (for shimmer animation) */
   isCharging?: boolean;
+  /** Small pill badge top-right of the node (Real Setup — module count / PCU-mode initials) */
+  badge?: string;
+  /** Real Setup overload escalation (Section F.3 / G.3) — House node only. */
+  overloadLevel?: "none" | "amber" | "red" | "tripped";
 }
 
 const NODE_W = 150;
@@ -37,17 +41,21 @@ const NODE_H_BASE = 70;
 
 export function ComponentNode({
   cx, cy, label, subvalue, iconType, glowColor, isActive, danger, socPercent,
-  controls, controlsHeight = 0, isCharging = false,
+  controls, controlsHeight = 0, isCharging = false, badge, overloadLevel = "none",
 }: ComponentNodeProps) {
   const Icon = ICON_MAP[iconType];
+  const reduceMotion = useReducedMotion();
 
   const NODE_H = NODE_H_BASE + (controls ? controlsHeight : 0);
 
   const x = cx - NODE_W / 2;
   const y = cy - NODE_H / 2;
 
-  const borderColor = danger ? "#EF4444" : isActive ? glowColor : "#334155";
-  const borderWidth  = isActive ? 1.5 : 1;
+  const overloadColor = overloadLevel === "amber" ? "#FB923C" : overloadLevel === "red" || overloadLevel === "tripped" ? "#EF4444" : null;
+  const borderColor = overloadColor ?? (danger ? "#EF4444" : isActive ? glowColor : "#334155");
+  const borderWidth  = overloadLevel !== "none" ? 2 : isActive ? 1.5 : 1;
+  // Tripped = a stopped state should not look alive — desaturate, no pulse.
+  const nodeOpacity = overloadLevel === "tripped" ? 0.4 : 1;
 
   // Derive a glow shadow intensity based on activity
   const glowIntensity = isActive ? (danger ? "#EF444488" : `${glowColor}55`) : "none";
@@ -66,10 +74,10 @@ export function ComponentNode({
     : "#22C55E";
 
   return (
-    <g style={{ cursor: "default" }}>
+    <g style={{ cursor: "default", opacity: nodeOpacity }}>
 
-      {/* ── Glow pulse ring ── */}
-      {isActive && (
+      {/* ── Glow pulse ring — normal active state (suppressed during overload escalation) ── */}
+      {isActive && overloadLevel === "none" && (
         <motion.circle
           cx={cx} cy={cy} r={50}
           fill={glowColor}
@@ -81,6 +89,39 @@ export function ComponentNode({
           }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
         />
+      )}
+
+      {/* ── Overload escalation ring (Section F.3 / G.3) ──
+          amber: 100–120% cap, period 2s. red: 120–150% cap, period 0.8s (faster).
+          tripped: solid, no pulse — a stopped state should not look alive.
+          Reduced motion: static colored border only (color is never the only
+          channel — the STATUS/badge text always carries the same message). */}
+      {overloadLevel === "amber" && (
+        reduceMotion ? (
+          <circle cx={cx} cy={cy} r={48} fill="none" stroke="#FB923C" strokeWidth={2.5} opacity={0.7} />
+        ) : (
+          <motion.circle
+            cx={cx} cy={cy} r={48} fill="none" stroke="#FB923C" strokeWidth={2.5}
+            initial={{ opacity: 0.15 }}
+            animate={{ opacity: [0.15, 0.4, 0.15] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          />
+        )
+      )}
+      {overloadLevel === "red" && (
+        reduceMotion ? (
+          <circle cx={cx} cy={cy} r={48} fill="none" stroke="#EF4444" strokeWidth={3} opacity={0.85} />
+        ) : (
+          <motion.circle
+            cx={cx} cy={cy} r={48} fill="none" stroke="#EF4444" strokeWidth={3}
+            initial={{ opacity: 0.15 }}
+            animate={{ opacity: [0.15, 0.5, 0.15] }}
+            transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }}
+          />
+        )
+      )}
+      {overloadLevel === "tripped" && (
+        <circle cx={cx} cy={cy} r={48} fill="none" stroke="#EF4444" strokeWidth={3} opacity={0.9} />
       )}
 
       {/* ── SVG defs for SoC gradient + shimmer (battery only) ── */}
@@ -114,6 +155,30 @@ export function ComponentNode({
           filter: isActive ? `drop-shadow(0 0 8px ${glowIntensity})` : "none",
         }}
       />
+
+      {/* ── Badge (Real Setup — module count / PCU-mode initials) ── */}
+      {badge && (
+        <g>
+          <rect
+            x={x + NODE_W - 34} y={y - 8}
+            width={34} height={15} rx={7.5}
+            fill="rgba(15,23,42,0.92)"
+            stroke={isActive ? glowColor : "#334155"}
+            strokeWidth={1}
+          />
+          <text
+            x={x + NODE_W - 17} y={y - 0.5}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill={isActive ? glowColor : "#94A3B8"}
+            fontSize="8.5"
+            fontFamily="JetBrains Mono, monospace"
+            fontWeight="700"
+          >
+            {badge}
+          </text>
+        </g>
+      )}
 
       {/* ── Subtle inner glass sheen (top strip) ── */}
       <rect

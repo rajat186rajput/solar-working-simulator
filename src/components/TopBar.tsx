@@ -73,9 +73,15 @@ export function TopBar() {
     setDayType,
     lang,
     setLang,
+    simView,
+    setSimView,
+    overloadBand,
   } = useSimStore();
 
-  const hasAlert = systemOffline || inverterOverload;
+  // F.3 — reuse the existing hasAlert badge for the Real Setup overload bands
+  // too (amber/red pre-trip states), not just the hard systemOffline/trip case.
+  const hasAlert =
+    systemOffline || inverterOverload || (simView === "real-setup" && overloadBand !== "none");
   const isNight = timeHour < 5 || timeHour >= 19;
 
   return (
@@ -105,6 +111,40 @@ export function TopBar() {
               </motion.div>
             )}
           </AnimatePresence>
+        </div>
+
+        {/* Learn ⇄ Real Setup — House No. 89 segmented switch (Section A) */}
+        <div
+          role="group"
+          aria-label={L(lang, "realSetupAria")}
+          className="flex items-center gap-0.5 bg-surface-card rounded-lg p-0.5 border border-surface-stroke shrink-0"
+        >
+          <button
+            onClick={() => setSimView("learn")}
+            aria-pressed={simView === "learn"}
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
+              simView === "learn"
+                ? "border border-solar bg-solar/10 text-solar"
+                : "border border-transparent text-text-muted hover:text-text-primary"
+            }`}
+          >
+            <span className="sm:hidden">📖</span>
+            <span>{L(lang, "learnMode")}</span>
+          </button>
+          <button
+            onClick={() => setSimView("real-setup")}
+            aria-pressed={simView === "real-setup"}
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
+              simView === "real-setup"
+                ? "border border-solar bg-solar/10 text-solar"
+                : "border border-transparent text-text-muted hover:text-text-primary"
+            }`}
+            style={simView === "real-setup" ? { boxShadow: "0 0 10px rgba(246,201,14,0.40)" } : undefined}
+          >
+            <span className="sm:hidden">🏠</span>
+            <span className="hidden sm:inline">{L(lang, "realSetupMode")}</span>
+            <span className="sm:hidden">{L(lang, "realSetupShort")}</span>
+          </button>
         </div>
 
         {/* Spacer — pushes controls to right on row 1 */}
