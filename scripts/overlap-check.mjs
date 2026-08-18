@@ -27,9 +27,25 @@
 //       the exact "flow line runs through card text" class of bug Rajat
 //       found in round 3, which (a)/(b) alone did not catch since they only
 //       checked the label PILL's rect, never the path geometry itself)
+//   (e)/(f) GATE-1 sidebar polish — ModeSidebar's PCU-mode chip list (the
+//       Lead-reported bug: "GRID EXPORT" wrapping onto/under the Lock icon,
+//       SMART's "Factory default" badge overlapping the Day/Night chain
+//       rows). For every combo where the sidebar is opened, ALL leaf
+//       text-bearing elements and ALL <svg> icon elements inside
+//       [data-testid="mode-sidebar-panel"] are collected separately from
+//       the schematic SVG's own geometry (the sidebar visually occludes the
+//       diagram behind it — comparing sidebar text against diagram text
+//       would be a false positive, not a real defect) and asserted:
+//   (e) no two sidebar text boxes intersect each other
+//   (f) no sidebar text box intersects a sidebar icon box (this is the
+//       actual class of bug reported — an absolutely-positioned Lock icon
+//       sitting on top of wrapped chip-label text)
 //
 // Run at 1440 / 1024 / 768 / 375 px, in both Learn and Real Setup, in both
-// EN and HI — 16 combinations total. Report saved to
+// EN and HI (16 base combinations) PLUS the sidebar-open variant of Real
+// Setup at every width where the sidebar toggle handle is reachable (>=768,
+// `hidden md:flex` on the handle) in both languages (6 more) — 22
+// combinations total. Report saved to
 // Projects/Personal/3 Solar Working Simulator/preview_screenshots/v15d_overlap_report.txt
 
 import { chromium } from "playwright";
@@ -143,7 +159,38 @@ function pointInBox(pt, box) {
   return pt.x >= box.left && pt.x <= box.right && pt.y >= box.top && pt.y <= box.bottom;
 }
 
-async function runCombo(browser, width, mode, lang) {
+// (e)/(f) — ModeSidebar's own geometry, collected separately from the
+// schematic SVG (see the header comment above for why: the sidebar
+// occludes the diagram, so cross-comparing the two would be noise, not
+// signal). "Text boxes" = leaf elements (no element children) that carry
+// non-empty text content — the same "atomic unit" idea as picking <text>
+// elements out of the SVG, just for HTML. "Icon boxes" = every <svg> (the
+// lucide-react icons: Lock, and PriorityChain's Sun/BatteryCharging/Zap/
+// ArrowRight) inside the panel.
+async function collectSidebarGeometry(page) {
+  return page.evaluate(() => {
+    const panel = document.querySelector('[data-testid="mode-sidebar-panel"]');
+    if (!panel) return { textBoxes: [], iconBoxes: [] };
+
+    const toBox = (el, label) => {
+      const r = el.getBoundingClientRect();
+      return { label, left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+    };
+
+    const textBoxes = Array.from(panel.querySelectorAll("*"))
+      .filter((el) => el.children.length === 0 && (el.textContent || "").trim().length > 0)
+      .map((el, i) => toBox(el, `sidebar-text#${i} "${(el.textContent || "").trim().slice(0, 30)}"`))
+      .filter((b) => b.w > 0 && b.h > 0);
+
+    const iconBoxes = Array.from(panel.querySelectorAll("svg"))
+      .map((el, i) => toBox(el, `sidebar-icon#${i}`))
+      .filter((b) => b.w > 0 && b.h > 0);
+
+    return { textBoxes, iconBoxes };
+  });
+}
+
+async function runCombo(browser, width, mode, lang, sidebarOpen = false) {
   const page = await browser.newPage({ viewport: { width, height: Math.max(900, Math.round(width * 0.65)) } });
   const violations = [];
   let checksRun = 0;
@@ -159,6 +206,22 @@ async function runCombo(browser, width, mode, lang) {
     if (lang === "hi") {
       await page.getByRole("button", { name: /Switch to Hindi/i }).click();
       await page.waitForTimeout(500);
+    }
+
+    if (sidebarOpen) {
+      // ModeSidebar auto-opens once (desktop, first real-setup entry) then
+      // auto-closes ~4s later — click deterministically into the OPEN state
+      // regardless of that transient timer (the click itself also cancels
+      // any pending auto-close, per ModeSidebar's handleToggle()).
+      const handle = page.getByRole("button", { name: /Open simulation mode panel|Close simulation mode panel/i }).first();
+      await handle.click();
+      await page.waitForTimeout(300);
+      const expanded = await handle.getAttribute("aria-expanded");
+      if (expanded !== "true") {
+        await handle.click();
+        await page.waitForTimeout(300);
+      }
+      await page.waitForTimeout(300); // let the 220ms slide-in settle
     }
 
     const geo = await collectGeometry(page);
@@ -250,14 +313,45 @@ async function runCombo(browser, width, mode, lang) {
         }
       }
     }
+
+    // (e)/(f) — sidebar-open combos only. See collectSidebarGeometry() and
+    // the header comment for why this is checked separately from the SVG's
+    // own geometry rather than merged into (a).
+    if (sidebarOpen) {
+      const sidebarGeo = await collectSidebarGeometry(page);
+
+      for (let i = 0; i < sidebarGeo.textBoxes.length; i++) {
+        for (let j = i + 1; j < sidebarGeo.textBoxes.length; j++) {
+          checksRun++;
+          const a = sidebarGeo.textBoxes[i];
+          const b = sidebarGeo.textBoxes[j];
+          if (rectsIntersect(a, b)) {
+            violations.push(`(e) SIDEBAR TEXT OVERLAP — ${a.label} ${fmtRect(a)}  <->  ${b.label} ${fmtRect(b)}`);
+          }
+        }
+      }
+
+      for (const t of sidebarGeo.textBoxes) {
+        for (const icon of sidebarGeo.iconBoxes) {
+          checksRun++;
+          if (rectsIntersect(t, icon)) {
+            violations.push(`(f) SIDEBAR TEXT ON ICON — ${t.label} ${fmtRect(t)}  <->  ${icon.label} ${fmtRect(icon)}`);
+          }
+        }
+      }
+    }
   } catch (err) {
     violations.push(`(!) RUN ERROR — ${err instanceof Error ? err.message : String(err)}`);
   } finally {
     await page.close();
   }
 
-  return { width, mode, lang, checksRun, violations };
+  return { width, mode, lang, sidebarOpen, checksRun, violations };
 }
+
+// ModeSidebar's toggle handle is `hidden md:flex` (Tailwind md = 768px) —
+// the sidebar-open variant is only reachable at these widths.
+const SIDEBAR_CAPABLE_WIDTHS = WIDTHS.filter((w) => w >= 768);
 
 async function main() {
   const browser = await chromium.launch();
@@ -269,11 +363,25 @@ async function main() {
         const r = await runCombo(browser, width, mode, lang);
         results.push(r);
         console.log(
-          `${String(width).padStart(4)}px | ${mode.padEnd(10)} | ${lang} | ${r.checksRun} checks | ${
+          `${String(width).padStart(4)}px | ${mode.padEnd(10)} | ${lang} | sidebar=closed | ${r.checksRun} checks | ${
             r.violations.length
           } violation(s)`
         );
       }
+    }
+  }
+
+  // GATE-1 sidebar polish — Real Setup, sidebar OPEN, at every width where
+  // the toggle handle exists (>=768px), both languages.
+  for (const width of SIDEBAR_CAPABLE_WIDTHS) {
+    for (const lang of LANGS) {
+      const r = await runCombo(browser, width, "real-setup", lang, true);
+      results.push(r);
+      console.log(
+        `${String(width).padStart(4)}px | ${"real-setup".padEnd(10)} | ${lang} | sidebar=open   | ${r.checksRun} checks | ${
+          r.violations.length
+        } violation(s)`
+      );
     }
   }
 
@@ -285,12 +393,17 @@ async function main() {
   const lines = [];
   lines.push("Solar Working Simulator — GATE-1 overlap-check report");
   lines.push(`Generated: ${new Date().toISOString()}`);
-  lines.push(`Combinations: ${results.length} (widths ${WIDTHS.join("/")}px x modes ${MODES.join("/")} x langs ${LANGS.join("/")})`);
+  lines.push(
+    `Combinations: ${results.length} (widths ${WIDTHS.join("/")}px x modes ${MODES.join("/")} x langs ${LANGS.join(
+      "/"
+    )}, plus sidebar=open on Real Setup at widths ${SIDEBAR_CAPABLE_WIDTHS.join("/")}px x langs ${LANGS.join("/")})`
+  );
   lines.push(`Total checks run: ${totalChecks}`);
   lines.push(`Total violations: ${totalViolations}`);
   lines.push("");
   for (const r of results) {
-    lines.push(`── ${r.width}px / ${r.mode} / ${r.lang} — ${r.checksRun} checks, ${r.violations.length} violation(s) ──`);
+    const sidebarTag = r.sidebarOpen ? " / sidebar=open" : "";
+    lines.push(`── ${r.width}px / ${r.mode} / ${r.lang}${sidebarTag} — ${r.checksRun} checks, ${r.violations.length} violation(s) ──`);
     if (r.violations.length === 0) {
       lines.push("  (clean)");
     } else {
