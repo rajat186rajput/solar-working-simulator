@@ -37,6 +37,16 @@ export const PCU_CAP_W = 4000;
 /** Transformer-based PCU — real-world efficiency, not the generic 0.95 used by Learn mode. */
 export const PCU_EFF = 0.90;
 
+/**
+ * PVVNL sanctioned load per connection (03_ASBUILT.md §1 topology row + §2.2
+ * "Simulator implication (e)" correction, owner question "grid hai to trip
+ * kyu?" 2026-08-18). Distinct from PCU_CAP_W: this is a BILLING/METERING
+ * limit, not an inverter hardware limit — drawing above it while on grid
+ * risks a PVVNL penalty (real data point: Connection 1 hit 6.71 kW vs this
+ * 4 kW sanction in Jun-2026, 03_ASBUILT §3), it never trips anything.
+ */
+export const SANCTIONED_LOAD_W = 4000;
+
 /** SPV (solar) battery-charge current default + derived watt cap (18A × ~54V per manual). */
 export const SPV_CHARGE_A_DEFAULT = 18;
 export const CHARGE_VOLTAGE = 54; // approx bank charge voltage (4×13.5V-ish)
@@ -182,6 +192,8 @@ export const NAMEPLATE = {
     batteryModeCap: "4 kW",
     spvChargeCurrent: "18 A (default)",
     efficiency: "~90%",
+    /** 03_ASBUILT §2.2(e) — PVVNL billing limit, not a hardware cap; distinct from batteryModeCap. */
+    sanctionedLoad: "4 kW (PVVNL)",
   },
   battery: {
     name: "4 × 150 Ah, 12 V lead-acid",
@@ -230,6 +242,8 @@ export interface RealSetupResult {
   curtailedW: number;
   /** R5 (code review): lead-acid bank sitting at/below its 50% DoD floor — surfaced as a TopBar alert too. */
   atDodFloor: boolean;
+  /** 03_ASBUILT §2.2(e): grid ON + total load above SANCTIONED_LOAD_W — billing/penalty advisory, never a trip. */
+  sanctionedLoadExceeded: boolean;
 }
 
 export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
@@ -270,8 +284,31 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
   const activeSoc = batteryEffectivelyOff ? 0 : batterySoc;
   const maxRateW = getMaxBatteryRateW(batteryKwh, batteryType);
 
-  const overloadBand = getOverloadBand(rawLoadW, PCU_CAP_W);
+  // 03_ASBUILT §2.2(e) CORRECTION (owner question "grid hai to trip kyu?",
+  // 2026-08-18): the 4kW cap + 60s/30s trip timers model the INVERTER's own
+  // battery/solar->AC path — they apply ONLY when the inverter is the sole
+  // source serving the load, i.e. grid OFF (or failed). With grid AVAILABLE,
+  // any load beyond what solar+battery can carry through the inverter is
+  // picked up directly by the grid (mains/grid-tie changeover) — every mode
+  // branch below already routes an uncovered deficit into gridImportW
+  // whenever gridAvailable is true, so the inverter itself is never actually
+  // asked to carry more than its own cap; there is no trip to model there.
+  // The manual's own Grid-Tie-ON overload table only starts at >200% of the
+  // 5kVA mains rating (>=10kW, 10-MINUTE timer) — two orders of magnitude
+  // above any default household combo in this simulator (max ~9.5kW with
+  // every catalog appliance on for one connection) — so, per the correction's
+  // own "or simply cap the sim at 'no trip below 10kW with grid ON' and
+  // document" fallback, this simulator does not model a grid-tie trip at
+  // all: overloadBand (and therefore all the countdown/trip machinery below,
+  // AND OverloadWatcher.tsx's wall-clock countdown, which only ever fires on
+  // a non-"none" band) is unconditionally "none" whenever grid is available.
+  const overloadBand: OverloadBand = gridAvailable ? "none" : getOverloadBand(rawLoadW, PCU_CAP_W);
   const isTripped = pcuTripped || overloadBand === "critical";
+
+  // NEW advisory (03_ASBUILT §2.2(e)) — PVVNL sanctioned load (billing limit,
+  // not a hardware/trip limit) is exceeded while drawing from grid. Never
+  // trips; surfaced as a Grid-node chip + ticker line, not systemStatus.
+  const sanctionedLoadExceeded = gridAvailable && rawLoadW > SANCTIONED_LOAD_W;
 
   if (isTripped) {
     return {
@@ -291,6 +328,7 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
       statusKey: "overloadTripped",
       curtailedW: 0,
       atDodFloor: !batteryEffectivelyOff && batterySoc <= LOW_SOC_CUTOFF[batteryType] + 0.01 && LOW_SOC_CUTOFF[batteryType] >= 0.5,
+      sanctionedLoadExceeded,
     };
   }
 
@@ -517,5 +555,6 @@ export function runPcuSimulation(input: RealSetupInput): RealSetupResult {
     statusKey,
     curtailedW,
     atDodFloor,
+    sanctionedLoadExceeded,
   };
 }

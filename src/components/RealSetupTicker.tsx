@@ -22,6 +22,7 @@ export function RealSetupTicker() {
   const lang = useSimStore((s) => s.lang);
   const curtailedW = useSimStore((s) => s.curtailedW);
   const netMeterInstalled = useSimStore((s) => s.netMeterInstalled);
+  const sanctionedLoadExceeded = useSimStore((s) => s.sanctionedLoadExceeded);
   const reduceMotion = useReducedMotion();
   const [idx, setIdx] = useState(0);
 
@@ -30,6 +31,9 @@ export function RealSetupTicker() {
     ...(curtailedW > 1 && !netMeterInstalled
       ? [`${L(lang, "curtailedChip")}: ${(curtailedW / 1000).toFixed(2)} kW — ${L(lang, "curtailedHint")}`]
       : []),
+    // 03_ASBUILT §2.2(e) — grid-ON sanctioned-load advisory (billing risk,
+    // never a trip; distinct from the grid-OFF red inverter-overload toast).
+    ...(sanctionedLoadExceeded ? [L(lang, "sanctionedLoadTicker")] : []),
   ];
 
   useEffect(() => {

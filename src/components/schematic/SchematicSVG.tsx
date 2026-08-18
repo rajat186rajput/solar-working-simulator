@@ -476,7 +476,7 @@ function BatteryNodeControls({ isMobile = false }: { isMobile?: boolean }) {
 
 // ─── Grid node controls (FIX 5 + FIX 9) ──────────────────────────────────
 function GridNodeControls() {
-  const { gridAvailable, setGridAvailable, mode, simView, lang } = useSimStore();
+  const { gridAvailable, setGridAvailable, mode, simView, lang, sanctionedLoadExceeded } = useSimStore();
   const isRealSetup = simView === "real-setup";
 
   return (
@@ -494,6 +494,14 @@ function GridNodeControls() {
       {!gridAvailable && (
         <div style={{ fontSize: 10, color: "#EF444488", lineHeight: 1.2 }}>
           {isRealSetup ? "Battery backup (PCU se)" : mode === "on-grid" ? "Solar bhi band" : "Battery backup"}
+        </div>
+      )}
+      {/* 03_ASBUILT §2.2(e) — PVVNL sanctioned-load advisory (billing risk,
+          never a trip). Amber, distinct from the red inverter-trip ring
+          (which only ever shows when grid is OFF, see realSetup.ts). */}
+      {isRealSetup && sanctionedLoadExceeded && (
+        <div style={{ fontSize: 9, color: "#F59E0B", lineHeight: 1.2, fontWeight: 600 }}>
+          ⚠ {L(lang, "sanctionedLoadChip")}
         </div>
       )}
     </div>

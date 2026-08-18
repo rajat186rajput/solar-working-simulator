@@ -9,6 +9,18 @@
 // No visual output — mounted once inside SchematicSVG when simView is
 // "real-setup". Reads overloadBand from the store (computed every recompute)
 // and drives pcuTripped + overloadRemainingSec.
+//
+// 03_ASBUILT §2.2(e) INVARIANT (owner question "grid hai to trip kyu?",
+// 2026-08-18): this countdown must only ever run for the INVERTER-mode band
+// (grid OFF). It intentionally does NOT read `gridAvailable` directly — that
+// isn't needed, because lib/realSetup.ts's runPcuSimulation() already makes
+// overloadBand unconditionally "none" whenever gridAvailable is true (see
+// the comment above its `overloadBand` assignment). So the `overloadBand ===
+// "none"` branch immediately below already cancels/never-starts a countdown
+// the instant grid is available — this file doesn't need its own grid check,
+// but the invariant it relies on is enforced one layer down, in the pure
+// simulation function, and is covered by the vitest cases in
+// lib/__tests__/realSetup.test.ts ("grid ON ... overloadBand none").
 
 import { useEffect, useRef } from "react";
 import { useSimStore } from "@/store/simulation-store";

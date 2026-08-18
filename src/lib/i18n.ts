@@ -133,6 +133,11 @@ export const LABELS = {
   // Real Setup — per-connection appliance grid split (03_ASBUILT §3.1)
   otherAppliancesShow: { en: "+ Other appliances", hi: "+ अन्य उपकरण" },
   otherAppliancesHide: { en: "− Hide other appliances", hi: "− अन्य उपकरण छुपाएं" },
+
+  // Real Setup — sanctioned-load advisory (03_ASBUILT §2.2(e), grid-ON only, never a trip)
+  sanctionedLoadChip:   { en: "Sanctioned load exceeded", hi: "स्वीकृत भार पार" },
+  sanctionedLoadTicker: { en: "Sanctioned load 4 kW exceeded — PVVNL penalty risk", hi: "स्वीकृत भार 4 kW से ऊपर — PVVNL पेनल्टी का जोखिम" },
+  nameplateSanctionedLoad: { en: "Sanctioned load", hi: "स्वीकृत भार" },
 } as const
 
 export type LabelKey = keyof typeof LABELS

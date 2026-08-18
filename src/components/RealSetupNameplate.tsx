@@ -57,6 +57,7 @@ export function RealSetupNameplate({ className = "" }: { className?: string }) {
           </SectionHeading>
           <Row label={L(lang, "nameplateBatteryModeCap")} value={NAMEPLATE.pcu.batteryModeCap} />
           <Row label={L(lang, "nameplateMainsRating")} value={NAMEPLATE.pcu.mainsRating} />
+          <Row label={L(lang, "nameplateSanctionedLoad")} value={NAMEPLATE.pcu.sanctionedLoad} />
           <Row label={L(lang, "nameplateSpvCurrent")} value={NAMEPLATE.pcu.spvChargeCurrent} />
           <Row label={L(lang, "nameplateEfficiency")} value={NAMEPLATE.pcu.efficiency} />
 

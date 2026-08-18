@@ -14,6 +14,8 @@ import {
   runPcuSimulation,
   CONNECTION_APPLIANCE_QTYS,
   CONNECTION_BOOT_ON,
+  SANCTIONED_LOAD_W,
+  PCU_CAP_W,
   type RealSetupInput,
 } from "../realSetup";
 import { APPLIANCES, getApplianceById } from "../appliances";
@@ -196,5 +198,103 @@ describe("Per-connection appliance defaults (03_ASBUILT §3.1)", () => {
       expect(bootOnW, `${conn} boot ON-load`).toBeLessThanOrEqual(4000);
       expect(bootOnW, `${conn} boot ON-load should be nonzero`).toBeGreaterThan(0);
     }
+  });
+});
+
+// ─── Grid-available overload correction (03_ASBUILT.md §2.2(e)) ────────────
+// Owner question 2026-08-18, "grid hai to trip kyu?" ("why does it trip if
+// grid is on?") on a preview showing SMART mode, grid ON, solar 4018W, load
+// 4003W -> red "Overload — trips in 60s". That was a bug: the 4kW PCU_CAP_W
+// trip/countdown timers model the INVERTER's own battery/solar->AC path and
+// only apply when the inverter is the SOLE source (grid OFF/failed). With
+// grid available, any load beyond the inverter's own throughput is picked
+// up directly by the grid (mains/grid-tie changeover) — no trip. This
+// simulator implements the correction's own permitted fallback ("or simply
+// cap the sim at 'no trip below 10kW with grid ON' and document"): while
+// gridAvailable is true, overloadBand is unconditionally "none" (see the
+// comment above its assignment in realSetup.ts) — no household default
+// combo in this simulator gets anywhere near the manual's own Grid-Tie-ON
+// table threshold (>=10kW) anyway. Separately, the PVVNL SANCTIONED LOAD
+// (4kW/connection, a billing limit, not a hardware one) gets a NEW,
+// non-tripping advisory (sanctionedLoadExceeded) whenever grid is on and
+// draw exceeds it.
+describe("Grid-available overload correction (03_ASBUILT §2.2(e))", () => {
+  // (a) SMART day, grid ON, solar plentiful (~4.3kW at noon on 4.8kWp),
+  // load just over the 4kW inverter cap (4003W) -> must NOT overload/trip;
+  // grid backstops it (here, solar alone already covers the load).
+  it("(a) grid ON, load just over PCU_CAP_W (4003W) -> overloadBand none, no trip, energy balance holds", () => {
+    const input = baseInput({
+      pcuMode: "smart",
+      gridAvailable: true,
+      loadW: PCU_CAP_W + 3, // 4003W
+    });
+    const r = runPcuSimulation(input);
+    expect(r.overloadBand).toBe("none");
+    expect(r.systemOffline).toBe(false);
+    expect(r.inverterOverload).toBe(false);
+    expect(r.gridImportW).toBeGreaterThanOrEqual(0);
+    assertEnergyBalance(input, "(a) grid ON, load 4003W");
+  });
+
+  // (b) Same load, grid OFF -> the classic inverter-mode band DOES apply:
+  // 4003/4000 = 100.075% -> "amber" (100-120% band, 60s countdown lives in
+  // OverloadWatcher.tsx, not this pure function — but the band itself,
+  // which drives that countdown, must fire here).
+  it("(b) same load (4003W), grid OFF -> overloadBand amber (inverter-mode countdown band)", () => {
+    const input = baseInput({
+      pcuMode: "smart",
+      gridAvailable: false,
+      loadW: PCU_CAP_W + 3, // 4003W
+      batterySoc: 0.9, // plenty of charge so this doesn't ALSO trip systemOffline for an unrelated reason
+    });
+    const r = runPcuSimulation(input);
+    expect(r.overloadBand).toBe("amber");
+    expect(r.sanctionedLoadExceeded).toBe(false); // advisory is grid-ON only
+    assertEnergyBalance(input, "(b) grid OFF, load 4003W");
+  });
+
+  // (c) Grid ON, load 4500W (above the 4kW PVVNL sanction, still nowhere
+  // near the manual's Grid-Tie-ON overload table) -> sanctioned-load
+  // advisory true, but still no trip/overload.
+  it("(c) grid ON, load 4500W -> sanctionedLoadExceeded true, overloadBand none, no trip", () => {
+    const input = baseInput({
+      pcuMode: "smart",
+      gridAvailable: true,
+      loadW: 4500,
+    });
+    const r = runPcuSimulation(input);
+    expect(r.sanctionedLoadExceeded).toBe(true);
+    expect(4500).toBeGreaterThan(SANCTIONED_LOAD_W);
+    expect(r.overloadBand).toBe("none");
+    expect(r.systemOffline).toBe(false);
+    assertEnergyBalance(input, "(c) grid ON, load 4500W sanctioned advisory");
+  });
+
+  // (d) Grid ON, load 11000W (>=200% of the 5kVA mains rating -- the
+  // manual's own Grid-Tie-ON table technically starts its 10-minute amber
+  // band here) -> documented cap chosen per 03_ASBUILT §2.2(e): no trip
+  // modelled for grid-tie at all (household defaults never get close to
+  // this in practice) -> overloadBand still "none", advisory still true,
+  // grid fully covers the huge deficit, no trip.
+  it("(d) grid ON, load 11000W (>=200% of 5kVA) -> documented no-trip cap holds, sanctioned advisory true", () => {
+    const input = baseInput({
+      pcuMode: "smart",
+      gridAvailable: true,
+      loadW: 11000,
+    });
+    const r = runPcuSimulation(input);
+    expect(r.overloadBand).toBe("none");
+    expect(r.sanctionedLoadExceeded).toBe(true);
+    expect(r.systemOffline).toBe(false);
+    expect(r.inverterOverload).toBe(false);
+    expect(r.gridImportW).toBeGreaterThan(0); // grid is doing the heavy lifting
+    assertEnergyBalance(input, "(d) grid ON, load 11000W grid-tie cap");
+  });
+
+  // Sanity: the advisory never fires with grid OFF, regardless of load.
+  it("sanctionedLoadExceeded is always false when grid is OFF", () => {
+    const input = baseInput({ gridAvailable: false, loadW: 9000, batterySoc: 0.9 });
+    const r = runPcuSimulation(input);
+    expect(r.sanctionedLoadExceeded).toBe(false);
   });
 });

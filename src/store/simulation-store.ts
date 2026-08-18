@@ -135,6 +135,8 @@ interface SimStore extends SimState {
   curtailedW: number;
   /** R5 (code review): lead-acid bank at/below its 50% DoD floor — false in Learn mode. */
   batteryAtDodFloor: boolean;
+  /** 03_ASBUILT §2.2(e): grid ON + total load above SANCTIONED_LOAD_W — billing advisory, false in Learn mode. */
+  sanctionedLoadExceeded: boolean;
   /** Generic status-log append (used by RealSetupToast for the F.2 rule toasts). */
   appendStatusLog: (msg: string) => void;
 }
@@ -243,6 +245,7 @@ function computeState(state: Partial<SimStore>): Partial<SimStore> {
       otherConnectionSummary,
       curtailedW: result.curtailedW,
       batteryAtDodFloor: result.atDodFloor,
+      sanctionedLoadExceeded: result.sanctionedLoadExceeded,
     };
   }
 
@@ -298,6 +301,7 @@ function computeState(state: Partial<SimStore>): Partial<SimStore> {
     // prior real-setup tick doesn't linger after switching back to Learn.
     curtailedW: 0,
     batteryAtDodFloor: false,
+    sanctionedLoadExceeded: false,
   };
 }
 
@@ -319,6 +323,7 @@ const INITIAL_STATE: SimState & {
   realSetupSnapshot: RealSetupSnapshot | null;
   curtailedW: number;
   batteryAtDodFloor: boolean;
+  sanctionedLoadExceeded: boolean;
 } = {
   mode: "hybrid",
   timeHour: 14,
@@ -352,6 +357,7 @@ const INITIAL_STATE: SimState & {
   realSetupSnapshot: null,
   curtailedW: 0,
   batteryAtDodFloor: false,
+  sanctionedLoadExceeded: false,
 
   solarW: getSolarW(14, "clear", 5),
   loadW: calcTotalLoadQty(DEFAULT_APPLIANCE_QTYS),
