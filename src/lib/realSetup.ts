@@ -22,6 +22,7 @@ import {
   VOLTAGE,
   getBatteryUsableKwh,
 } from "./simulation";
+import { APPLIANCES } from "./appliances";
 
 const TICK_HOURS = 1;
 
@@ -63,19 +64,83 @@ function getMaxBatteryRateW(batteryKwh: number, batteryType: BatteryType): numbe
   return Math.min(ah * C_RATE[batteryType] * voltage, PCU_CAP_W);
 }
 
-// ─── Connection selector (03_ASBUILT.md §3 + §1 topology) ───────────────────
+// ─── Connection selector (03_ASBUILT.md §3.1 — owner-confirmed 2026-08-18) ──
 /**
- * Default ON appliance ids per connection — split from the existing
- * ApplianceData[] catalog (no new appliance types invented). Both connections
- * share the always-on household baseline (fan/light/fridge/tv ≈ 655W per
- * 03_ASBUILT §3) and each gets ONE differentiating big load so the two
- * connections are visibly different without instantly violating a family
- * rule at boot (AC+geyser together, or EV during a cut, are still reachable
- * by the user toggling appliances — that's the point of the F.2 toast).
+ * Per-connection default APPLIANCE QUANTITIES — real household split, not a
+ * generic 50/50 halving. Source of truth: 03_ASBUILT.md §3.1 "Per-connection
+ * appliance split (CONFIRMED by owner 2026-08-18 14:14 IST)".
+ *
+ * Connection 2 (Rajat's side — bedroom + kitchen + bathroom) gets an
+ * EXPLICIT, small list: one AC/fridge/fan, the bedroom+bathroom+kitchen
+ * lighting, the PC, ALL kitchen appliances, and the EV charger. Every other
+ * catalog id is 0 on Connection 2 (not present on that connection at all).
+ *
+ * Connection 1 (Arun's side — "baki sab") is everything else: the FULL
+ * catalog default quantity for every id NOT exclusively on Connection 2,
+ * except the AC is downgraded from the catalog's qty=2 (both wall units) to
+ * a single unit so the "2-AC rule" toast is discovered by the user bumping
+ * the qty stepper, not pre-fired at boot. Kitchen appliances, EV, and PC are
+ * hard-zeroed on Connection 1 — those are Connection-2-exclusive per §3.1.
  */
-export const CONNECTION_DEFAULT_APPLIANCES: Record<ConnectionId, string[]> = {
-  "connection-1": ["fan", "light", "fridge", "tv", "ac"],     // Arun's side — AC-heavy
-  "connection-2": ["fan", "light", "fridge", "tv", "pump"],   // Rajat's side — pump-heavy
+const CONNECTION_2_QTYS: Partial<Record<string, number>> = {
+  ac: 1,
+  fridge: 1,
+  fan: 1,
+  "light-strip": 4,
+  tubelight: 2,
+  light: 2,
+  pc: 1,
+  mixer: 1,
+  microwave: 1,
+  chimney: 1,
+  toaster: 1,
+  "air-fryer": 1,
+  "water-bag": 1,
+  ev: 1,
+};
+
+/** Connection-2-exclusive ids — hard-zeroed on Connection 1 (03_ASBUILT §3.1). */
+const CONNECTION_1_ZERO_IDS = new Set([
+  "mixer", "microwave", "chimney", "toaster", "air-fryer", "water-bag", "ev", "pc",
+]);
+
+function buildConnection1Qtys(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const a of APPLIANCES) {
+    if (CONNECTION_1_ZERO_IDS.has(a.id)) {
+      out[a.id] = 0;
+    } else {
+      out[a.id] = a.id === "ac" ? 1 : a.defaultQty ?? 1;
+    }
+  }
+  return out;
+}
+
+function buildConnection2Qtys(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const a of APPLIANCES) out[a.id] = CONNECTION_2_QTYS[a.id] ?? 0;
+  return out;
+}
+
+/** Default appliance QUANTITY per catalog id, per connection (0 = not on this connection). */
+export const CONNECTION_APPLIANCE_QTYS: Record<ConnectionId, Record<string, number>> = {
+  "connection-1": buildConnection1Qtys(),
+  "connection-2": buildConnection2Qtys(),
+};
+
+const LIGHTING_IDS = ["light", "tubelight", "led-small", "led-large", "filament", "light-strip"];
+/** Baseline candidate ids that boot ON when present (nonzero qty) on a connection. */
+const BASELINE_ON_IDS = [...LIGHTING_IDS, "fan", "fridge", "ac"];
+
+/**
+ * Boot ON-state per connection: baseline lights/fan/fridge + AC ON, every
+ * heavy load OFF — so the family-rule toasts (geyser/2-AC/EV, 03_ASBUILT §3
+ * "Family rules") are DISCOVERED by the user toggling appliances, never
+ * pre-fired at boot (03_ASBUILT §3.1 "Rules" paragraph).
+ */
+export const CONNECTION_BOOT_ON: Record<ConnectionId, string[]> = {
+  "connection-1": BASELINE_ON_IDS.filter((id) => (CONNECTION_APPLIANCE_QTYS["connection-1"][id] ?? 0) > 0),
+  "connection-2": BASELINE_ON_IDS.filter((id) => (CONNECTION_APPLIANCE_QTYS["connection-2"][id] ?? 0) > 0),
 };
 
 export const CONNECTION_DEFAULT_BATTERY_SOC: Record<ConnectionId, number> = {

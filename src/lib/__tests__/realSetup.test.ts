@@ -10,8 +10,14 @@
 // runPcuSimulation, which is exactly the class of bug R1 was.
 
 import { describe, expect, it } from "vitest";
-import { runPcuSimulation, type RealSetupInput } from "../realSetup";
-import type { PcuMode } from "../types";
+import {
+  runPcuSimulation,
+  CONNECTION_APPLIANCE_QTYS,
+  CONNECTION_BOOT_ON,
+  type RealSetupInput,
+} from "../realSetup";
+import { APPLIANCES, getApplianceById } from "../appliances";
+import type { ConnectionId, PcuMode } from "../types";
 
 const DAY_HOUR = 12; // noon — near-peak solar
 const NIGHT_HOUR = 22; // 10 PM — zero solar
@@ -130,5 +136,65 @@ describe("runPcuSimulation — energy balance (R18)", () => {
     const r = runPcuSimulation(input);
     expect(r.curtailedW).toBeGreaterThan(0);
     assertEnergyBalance(input, "LEAD-2 curtailment");
+  });
+});
+
+// ─── Per-connection appliance defaults (03_ASBUILT.md §3.1, owner-confirmed
+// 2026-08-18) — CONNECTION_APPLIANCE_QTYS / CONNECTION_BOOT_ON ─────────────
+describe("Per-connection appliance defaults (03_ASBUILT §3.1)", () => {
+  const CATALOG_IDS = new Set(APPLIANCES.map((a) => a.id));
+  const CONNECTIONS: ConnectionId[] = ["connection-1", "connection-2"];
+
+  const C1_KITCHEN_EV_PC = ["mixer", "microwave", "chimney", "toaster", "air-fryer", "water-bag", "ev", "pc"];
+  const C2_NOT_PRESENT = ["tv", "geyser", "washing", "pump"];
+
+  it("Connection 1 has zero kitchen appliances, zero EV, zero PC", () => {
+    for (const id of C1_KITCHEN_EV_PC) {
+      expect(CONNECTION_APPLIANCE_QTYS["connection-1"][id], `C1 qty for ${id}`).toBe(0);
+    }
+  });
+
+  it("Connection 2 has zero of TV/geyser/washing-machine/pump", () => {
+    for (const id of C2_NOT_PRESENT) {
+      expect(CONNECTION_APPLIANCE_QTYS["connection-2"][id], `C2 qty for ${id}`).toBe(0);
+    }
+  });
+
+  it("Connection 2's confirmed kitchen + EV + PC set is nonzero", () => {
+    const shouldBeOnC2 = ["mixer", "microwave", "chimney", "toaster", "air-fryer", "water-bag", "ev", "pc", "ac", "fridge", "fan"];
+    for (const id of shouldBeOnC2) {
+      expect(CONNECTION_APPLIANCE_QTYS["connection-2"][id], `C2 qty for ${id}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("Both connections' quantity maps only reference existing catalog ids", () => {
+    for (const conn of CONNECTIONS) {
+      const map = CONNECTION_APPLIANCE_QTYS[conn];
+      for (const id of Object.keys(map)) {
+        expect(CATALOG_IDS.has(id), `${conn} qty map has unknown id "${id}"`).toBe(true);
+      }
+    }
+  });
+
+  it("Both connections' boot-ON id lists only reference existing catalog ids", () => {
+    for (const conn of CONNECTIONS) {
+      for (const id of CONNECTION_BOOT_ON[conn]) {
+        expect(CATALOG_IDS.has(id), `${conn} boot-ON has unknown id "${id}"`).toBe(true);
+      }
+    }
+  });
+
+  it("Per-connection default (boot) ON-load is <= 4000W (PCU_CAP_W)", () => {
+    for (const conn of CONNECTIONS) {
+      const qtyMap = CONNECTION_APPLIANCE_QTYS[conn];
+      const bootOnW = CONNECTION_BOOT_ON[conn].reduce((sum, id) => {
+        const appliance = getApplianceById(id);
+        const qty = qtyMap[id] ?? 0;
+        if (!appliance || qty <= 0) return sum;
+        return sum + appliance.watts * qty;
+      }, 0);
+      expect(bootOnW, `${conn} boot ON-load`).toBeLessThanOrEqual(4000);
+      expect(bootOnW, `${conn} boot ON-load should be nonzero`).toBeGreaterThan(0);
+    }
   });
 });

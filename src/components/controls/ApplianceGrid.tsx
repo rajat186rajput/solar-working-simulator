@@ -1,13 +1,16 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { Switch } from "@/components/ui/switch";
 import { APPLIANCES, CATEGORY_COLORS } from "@/lib/appliances";
+import { CONNECTION_APPLIANCE_QTYS } from "@/lib/realSetup";
 import { useSimStore } from "@/store/simulation-store";
 import { L } from "@/lib/i18n";
+import type { ApplianceData } from "@/lib/types";
 import {
   Wind, Lightbulb, Refrigerator, Tv, Droplets,
-  Flame, WashingMachine, Microwave, Shirt, Blender, Car, Zap,
+  Flame, WashingMachine, Microwave, Shirt, Blender, Car, Zap, ChevronDown,
 } from "lucide-react";
 
 const ICON_MAP: Record<string, React.ReactNode> = {
@@ -27,16 +30,24 @@ const ICON_MAP: Record<string, React.ReactNode> = {
 
 
 export function ApplianceGrid() {
-  const { applianceQtys, toggleAppliance, setApplianceQty, lang } = useSimStore();
+  const { applianceQtys, toggleAppliance, setApplianceQty, lang, simView, activeConnection } = useSimStore();
+  const [showOther, setShowOther] = useState(false);
 
-  return (
-    <div className="flex flex-col h-full">
-      <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">
-        Appliances
-      </div>
-      {/* 3-column grid — all appliances */}
-      <div className="grid grid-cols-3 gap-1 content-start">
-        {APPLIANCES.map((appliance) => {
+  // Real Setup — split the catalog into "this connection's appliances"
+  // (nonzero default qty on the active connection, 03_ASBUILT §3.1) vs
+  // everything else, tucked behind a "+ Other appliances" expander so the
+  // grid stays clean per-connection instead of showing all 30 catalog items
+  // at once. Learn mode is unaffected — always shows the full catalog.
+  const isRealSetup = simView === "real-setup";
+  const connectionQtyMap = isRealSetup ? CONNECTION_APPLIANCE_QTYS[activeConnection] : null;
+  const primaryAppliances = connectionQtyMap
+    ? APPLIANCES.filter((a) => (connectionQtyMap[a.id] ?? 0) > 0)
+    : APPLIANCES;
+  const otherAppliances = connectionQtyMap
+    ? APPLIANCES.filter((a) => (connectionQtyMap[a.id] ?? 0) === 0)
+    : [];
+
+  function renderCard(appliance: ApplianceData) {
           const entry = applianceQtys.find((e) => e.id === appliance.id);
           const isOn = entry?.isOn ?? false;
           const qty = entry?.qty ?? 1;
@@ -144,8 +155,44 @@ export function ApplianceGrid() {
               </div>
             </motion.div>
           );
-        })}
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">
+        Appliances
       </div>
+      {/* 3-column grid — this connection's appliances (or all, in Learn mode) */}
+      <div className="grid grid-cols-3 gap-1 content-start">
+        {primaryAppliances.map((appliance) => renderCard(appliance))}
+      </div>
+
+      {/* Real Setup — "+ Other appliances" expander for everything not on
+          the active connection's default set (03_ASBUILT §3.1). Kept
+          accessible (not hard-hidden) so the user can still opt an
+          appliance onto a connection it isn't normally on. */}
+      {isRealSetup && otherAppliances.length > 0 && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setShowOther((v) => !v)}
+            aria-expanded={showOther}
+            className="flex items-center gap-1 text-[10px] font-semibold text-text-muted hover:text-text-secondary transition-colors py-1"
+          >
+            <ChevronDown
+              size={11}
+              className="transition-transform"
+              style={{ transform: showOther ? "rotate(180deg)" : "rotate(0deg)" }}
+            />
+            {L(lang, showOther ? "otherAppliancesHide" : "otherAppliancesShow")}
+          </button>
+          {showOther && (
+            <div className="grid grid-cols-3 gap-1 content-start mt-1">
+              {otherAppliances.map((appliance) => renderCard(appliance))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -129,6 +129,10 @@ export const LABELS = {
   swipeHint:          { en: "◀ swipe ▶", hi: "◀ स्वाइप करें ▶" },
   pcuModeMobileHeading: { en: "PCU Mode", hi: "PCU मोड" },
   nameplateCapShort:  { en: "cap", hi: "कैप" },
+
+  // Real Setup — per-connection appliance grid split (03_ASBUILT §3.1)
+  otherAppliancesShow: { en: "+ Other appliances", hi: "+ अन्य उपकरण" },
+  otherAppliancesHide: { en: "− Hide other appliances", hi: "− अन्य उपकरण छुपाएं" },
 } as const
 
 export type LabelKey = keyof typeof LABELS

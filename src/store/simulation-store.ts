@@ -20,7 +20,8 @@ import { L } from "@/lib/i18n";
 import {
   runPcuSimulation,
   otherConnection,
-  CONNECTION_DEFAULT_APPLIANCES,
+  CONNECTION_APPLIANCE_QTYS,
+  CONNECTION_BOOT_ON,
   CONNECTION_DEFAULT_BATTERY_SOC,
   REAL_SETUP_PANEL_KWP,
   REAL_SETUP_BATTERY_KWH,
@@ -59,15 +60,16 @@ interface ConnectionSnapshot {
 }
 
 function connectionDefault(id: ConnectionId): ConnectionSnapshot {
+  // Per-connection quantities + boot ON-state — 03_ASBUILT.md §3.1
+  // (owner-confirmed 2026-08-18 real appliance split, replaces the earlier
+  // generic 50/50 placeholder split).
+  const qtyMap = CONNECTION_APPLIANCE_QTYS[id];
+  const bootOn = new Set(CONNECTION_BOOT_ON[id]);
   return {
-    // Real Setup defaults to a single AC unit ON per connection — the
-    // catalog's qty=2 default (both wall units) is left for the user to
-    // discover deliberately, which is what triggers the F.2 2-AC rule toast
-    // (03_ASBUILT.md §3 family rule 3) instead of firing it at boot.
     applianceQtys: DEFAULT_APPLIANCE_QTYS.map((e) => ({
       ...e,
-      qty: e.id === "ac" ? 1 : e.qty,
-      isOn: CONNECTION_DEFAULT_APPLIANCES[id].includes(e.id),
+      qty: qtyMap[e.id] ?? 0,
+      isOn: bootOn.has(e.id),
     })),
     batterySoc: CONNECTION_DEFAULT_BATTERY_SOC[id],
   };
