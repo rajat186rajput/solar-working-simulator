@@ -73,14 +73,34 @@ export function TopBar() {
     setDayType,
     lang,
     setLang,
+    simView,
+    setSimView,
+    overloadBand,
+    batteryAtDodFloor,
   } = useSimStore();
 
-  const hasAlert = systemOffline || inverterOverload;
+  // F.3 — reuse the existing hasAlert badge for the Real Setup overload bands
+  // too (amber/red pre-trip states), not just the hard systemOffline/trip case.
+  // R5 (code review): also alert on the lead-acid 50% DoD floor — otherwise an
+  // "empty" real-setup battery is invisible in the TopBar.
+  const hasAlert =
+    systemOffline || inverterOverload ||
+    (simView === "real-setup" && (overloadBand !== "none" || batteryAtDodFloor));
   const isNight = timeHour < 5 || timeHour >= 19;
 
   return (
+    // GATE-1 fix: ModeSidebar's click-away backdrop is `fixed inset-0 z-20`
+    // and TopBar previously had no z-index — an un-positioned element always
+    // renders BELOW any positioned descendant regardless of DOM order, so the
+    // backdrop silently intercepted clicks on TopBar (lang toggle, Reset,
+    // weather chips) whenever the sidebar was open. This was always latent
+    // (the sidebar could always be opened manually) but only got exercised
+    // once auto-open (item 7) started opening it automatically. `relative
+    // z-50` keeps TopBar clickable above the sidebar/backdrop/handle (z-30/
+    // z-20/z-40) at all times — matches the sidebar's own `pt-16` spacing,
+    // which already assumed the header stays visible on top.
     <header
-      className="flex flex-col md:flex-row shrink-0"
+      className="relative z-50 flex flex-col md:flex-row shrink-0"
       style={{
         background: "linear-gradient(135deg, rgba(15,23,42,0.97) 0%, rgba(30,41,59,0.97) 100%)",
         borderBottom: "1px solid transparent",
@@ -107,6 +127,40 @@ export function TopBar() {
           </AnimatePresence>
         </div>
 
+        {/* Learn ⇄ Real Setup — House No. 89 segmented switch (Section A) */}
+        <div
+          role="group"
+          aria-label={L(lang, "realSetupAria")}
+          className="flex items-center gap-0.5 bg-surface-card rounded-lg p-0.5 border border-surface-stroke shrink-0"
+        >
+          <button
+            onClick={() => setSimView("learn")}
+            aria-pressed={simView === "learn"}
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
+              simView === "learn"
+                ? "border border-solar bg-solar/10 text-solar"
+                : "border border-transparent text-text-muted hover:text-text-primary"
+            }`}
+          >
+            <span className="sm:hidden">📖</span>
+            <span>{L(lang, "learnMode")}</span>
+          </button>
+          <button
+            onClick={() => setSimView("real-setup")}
+            aria-pressed={simView === "real-setup"}
+            className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium transition-all ${
+              simView === "real-setup"
+                ? "border border-solar bg-solar/10 text-solar"
+                : "border border-transparent text-text-muted hover:text-text-primary"
+            }`}
+            style={simView === "real-setup" ? { boxShadow: "0 0 10px rgba(246,201,14,0.40)" } : undefined}
+          >
+            <span className="sm:hidden">🏠</span>
+            <span className="hidden sm:inline">{L(lang, "realSetupMode")}</span>
+            <span className="sm:hidden">{L(lang, "realSetupShort")}</span>
+          </button>
+        </div>
+
         {/* Spacer — pushes controls to right on row 1 */}
         <div className="flex-1 md:hidden" />
 
@@ -115,29 +169,10 @@ export function TopBar() {
 
         {/* Right controls — always visible in row 1 on mobile, part of single row on desktop */}
         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto md:ml-0">
-          {/* Divider before weather — only desktop (md+) */}
-          <div className="w-px self-stretch bg-surface-stroke mx-0.5 hidden md:block" />
-
-          {/* Weather buttons — desktop only (shown in row 2 on mobile) */}
-          <div className="hidden md:flex items-center gap-1">
-            {DAY_TYPES.map((dt) => (
-              <button
-                key={dt.value}
-                onClick={() => setDayType(dt.value)}
-                className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-medium border transition-all ${
-                  dayType === dt.value
-                    ? "border-solar bg-solar/10 text-solar"
-                    : "border-surface-stroke text-text-muted hover:border-surface-stroke/80"
-                }`}
-                style={dayType === dt.value ? { boxShadow: "0 0 10px rgba(246,201,14,0.40)" } : undefined}
-                aria-pressed={dayType === dt.value}
-                aria-label={`Set weather to ${L(lang, dt.key)}`}
-              >
-                <span>{dt.icon}</span>
-                <span className="hidden lg:inline">{L(lang, dt.key)}</span>
-              </button>
-            ))}
-          </div>
+          {/* LEAD-1 (code review): the weather chips lived in TWO places at md+ —
+              here AND in ROW 2 below (which is unconditionally rendered at every
+              breakpoint, not just mobile). ROW 2 is the single source of truth
+              for weather at all widths; this duplicate desktop copy is removed. */}
 
           {/* Divider before lang */}
           <div className="w-px self-stretch bg-surface-stroke mx-0.5" />
@@ -212,16 +247,25 @@ export function TopBar() {
                        flow by ordering — but since row1 contains left AND right, we use
                        CSS order to slot it between them on desktop.
       */}
-      <div
-        className={[
-          // Mobile: second row, full width, scrollable
-          "flex items-center h-10 px-3 gap-1 overflow-x-auto scrollbar-none",
-          "border-t border-surface-stroke/30",
-          // Desktop: becomes the center flex-1 piece
-          "md:border-t-0 md:border-l md:border-r md:border-surface-stroke md:flex-1 md:justify-center",
-          "backdrop-blur-md",
-        ].join(" ")}
-      >
+      {/* GATE-1 (Rajat: time-of-day row clipped on mobile, "Nig…" cut off) —
+          sizing/border classes moved onto this outer `relative` wrapper (was
+          on the scrollable div itself) so a right-edge fade can be an
+          absolutely-positioned SIBLING of the scrollable content — sitting
+          on top of it instead of scrolling away with it — signalling "more
+          chips this way" on mobile instead of the row just looking cut off
+          mid-chip. The row itself was already horizontally scrollable; this
+          only adds the affordance. Desktop flex-1/border behaviour unchanged. */}
+      <div className="relative md:flex-1 md:border-l md:border-r md:border-surface-stroke">
+        <div
+          className={[
+            // Mobile: second row, full width, scrollable
+            "flex items-center h-10 px-3 gap-1 overflow-x-auto scrollbar-none",
+            "border-t border-surface-stroke/30",
+            // Desktop: becomes the center flex-1 piece
+            "md:border-t-0 md:justify-center",
+            "backdrop-blur-md",
+          ].join(" ")}
+        >
         {/* Clock readout */}
         <span className="text-[10px] font-bold text-text-primary tabular-nums shrink-0 w-[46px]">
           {formatTime(timeHour)}
@@ -272,6 +316,13 @@ export function TopBar() {
             <span className="ml-0.5 hidden md:inline">{L(lang, dt.key)}</span>
           </button>
         ))}
+        </div>
+        {/* Right-edge scroll fade — mobile only, hidden once desktop content fits without scrolling */}
+        <div
+          className="md:hidden pointer-events-none absolute right-0 top-0 bottom-0 w-6"
+          style={{ background: "linear-gradient(to right, transparent, rgba(15,23,42,0.92))" }}
+          aria-hidden="true"
+        />
       </div>
     </header>
   );

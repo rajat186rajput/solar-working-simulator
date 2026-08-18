@@ -56,6 +56,17 @@ export function PowerFlowLine({ pathD, powerW, flowType, isActive, gridFail }: P
       filter={glowFilter}
       aria-hidden="true"
       className="power-flow-path"
+      // GATE-2 round-3 overlap-check (path-vs-text) — lets the script match a
+      // sample point on THIS path back to its own flow-watt-label pill (same
+      // data-flow-type on the label <g>), so the path crossing its own label
+      // is never flagged as a violation, only crossing anything else is.
+      data-flow-type={flowType}
+      // Both directions of a bidirectional pair (grid import/export,
+      // battery charge/discharge) are ALWAYS in the DOM (just dashed +
+      // barely-visible at 0.15 opacity when inactive) — the overlap-check
+      // script only samples ACTIVE (solid, visible) paths, since an
+      // inactive dashed line crossing text is not a real visual defect.
+      data-flow-active={isActive ? "true" : "false"}
     />
   );
 }

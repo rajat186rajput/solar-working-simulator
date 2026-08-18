@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Sun, Zap, BatteryCharging, Plug, Gauge, House } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -30,6 +30,18 @@ interface ComponentNodeProps {
   controlsHeight?: number;
   /** Whether this node is currently charging (for shimmer animation) */
   isCharging?: boolean;
+  /** Small pill badge top-right of the node (Real Setup — module count / PCU-mode initials) */
+  badge?: string;
+  /** Real Setup overload escalation (Section F.3 / G.3) — House node only. */
+  overloadLevel?: "none" | "amber" | "red" | "tripped";
+  /** GATE-2 round-3 (Rajat: "battery box has TWO bars") — Battery only. When
+   * true, the built-in SoC bar below becomes the ONE interactive slider
+   * (transparent range input overlaid exactly on the bar) instead of the
+   * card carrying a second, separate slider row inside its controls. */
+  socEditable?: boolean;
+  onSocChange?: (value: number) => void;
+  socDisabled?: boolean;
+  socThumbColor?: string;
 }
 
 const NODE_W = 150;
@@ -37,17 +49,22 @@ const NODE_H_BASE = 70;
 
 export function ComponentNode({
   cx, cy, label, subvalue, iconType, glowColor, isActive, danger, socPercent,
-  controls, controlsHeight = 0, isCharging = false,
+  controls, controlsHeight = 0, isCharging = false, badge, overloadLevel = "none",
+  socEditable = false, onSocChange, socDisabled = false, socThumbColor,
 }: ComponentNodeProps) {
   const Icon = ICON_MAP[iconType];
+  const reduceMotion = useReducedMotion();
 
   const NODE_H = NODE_H_BASE + (controls ? controlsHeight : 0);
 
   const x = cx - NODE_W / 2;
   const y = cy - NODE_H / 2;
 
-  const borderColor = danger ? "#EF4444" : isActive ? glowColor : "#334155";
-  const borderWidth  = isActive ? 1.5 : 1;
+  const overloadColor = overloadLevel === "amber" ? "#FB923C" : overloadLevel === "red" || overloadLevel === "tripped" ? "#EF4444" : null;
+  const borderColor = overloadColor ?? (danger ? "#EF4444" : isActive ? glowColor : "#334155");
+  const borderWidth  = overloadLevel !== "none" ? 2 : isActive ? 1.5 : 1;
+  // Tripped = a stopped state should not look alive — desaturate, no pulse.
+  const nodeOpacity = overloadLevel === "tripped" ? 0.4 : 1;
 
   // Derive a glow shadow intensity based on activity
   const glowIntensity = isActive ? (danger ? "#EF444488" : `${glowColor}55`) : "none";
@@ -66,10 +83,10 @@ export function ComponentNode({
     : "#22C55E";
 
   return (
-    <g style={{ cursor: "default" }}>
+    <g style={{ cursor: "default", opacity: nodeOpacity }}>
 
-      {/* ── Glow pulse ring ── */}
-      {isActive && (
+      {/* ── Glow pulse ring — normal active state (suppressed during overload escalation) ── */}
+      {isActive && overloadLevel === "none" && (
         <motion.circle
           cx={cx} cy={cy} r={50}
           fill={glowColor}
@@ -81,6 +98,39 @@ export function ComponentNode({
           }}
           transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
         />
+      )}
+
+      {/* ── Overload escalation ring (Section F.3 / G.3) ──
+          amber: 100–120% cap, period 2s. red: 120–150% cap, period 0.8s (faster).
+          tripped: solid, no pulse — a stopped state should not look alive.
+          Reduced motion: static colored border only (color is never the only
+          channel — the STATUS/badge text always carries the same message). */}
+      {overloadLevel === "amber" && (
+        reduceMotion ? (
+          <circle cx={cx} cy={cy} r={48} fill="none" stroke="#FB923C" strokeWidth={2.5} opacity={0.7} />
+        ) : (
+          <motion.circle
+            cx={cx} cy={cy} r={48} fill="none" stroke="#FB923C" strokeWidth={2.5}
+            initial={{ opacity: 0.15 }}
+            animate={{ opacity: [0.15, 0.4, 0.15] }}
+            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+          />
+        )
+      )}
+      {overloadLevel === "red" && (
+        reduceMotion ? (
+          <circle cx={cx} cy={cy} r={48} fill="none" stroke="#EF4444" strokeWidth={3} opacity={0.85} />
+        ) : (
+          <motion.circle
+            cx={cx} cy={cy} r={48} fill="none" stroke="#EF4444" strokeWidth={3}
+            initial={{ opacity: 0.15 }}
+            animate={{ opacity: [0.15, 0.5, 0.15] }}
+            transition={{ duration: 0.8, repeat: Infinity, ease: "easeInOut" }}
+          />
+        )
+      )}
+      {overloadLevel === "tripped" && (
+        <circle cx={cx} cy={cy} r={48} fill="none" stroke="#EF4444" strokeWidth={3} opacity={0.9} />
       )}
 
       {/* ── SVG defs for SoC gradient + shimmer (battery only) ── */}
@@ -102,8 +152,12 @@ export function ComponentNode({
         </defs>
       )}
 
-      {/* ── Card background — glassmorphism ── */}
+      {/* ── Card background — glassmorphism ──
+          data-node-card: GATE-1 overlap-check script (scripts/overlap-check.mjs)
+          selector for "this is a node's own boundary" — flow labels must
+          never intersect any of these. */}
       <rect
+        data-node-card="true"
         x={x} y={y}
         width={NODE_W} height={NODE_H}
         rx={12}
@@ -114,6 +168,35 @@ export function ComponentNode({
           filter: isActive ? `drop-shadow(0 0 8px ${glowIntensity})` : "none",
         }}
       />
+
+      {/* ── Badge (Real Setup — module count / PCU-mode initials) ──
+          GATE-1 (Rajat: badge overlaps the card's top-right corner): this
+          used to straddle the top border (y-8, half above / half below the
+          card edge). Moved fully inside the card with 4px clearance from
+          both the top and right borders — sits in the header strip, clear
+          of the icon (top-left) and the label text (starts at x+36). */}
+      {badge && (
+        <g>
+          <rect
+            x={x + NODE_W - 38} y={y + 4}
+            width={34} height={15} rx={7.5}
+            fill="rgba(15,23,42,0.92)"
+            stroke={isActive ? glowColor : "#334155"}
+            strokeWidth={1}
+          />
+          <text
+            x={x + NODE_W - 21} y={y + 11.5}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            fill={isActive ? glowColor : "#94A3B8"}
+            fontSize="8.5"
+            fontFamily="JetBrains Mono, monospace"
+            fontWeight="700"
+          >
+            {badge}
+          </text>
+        </g>
+      )}
 
       {/* ── Subtle inner glass sheen (top strip) ── */}
       <rect
@@ -180,10 +263,51 @@ export function ComponentNode({
               transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
             />
           )}
+          {/* GATE-2 round-3 — this bar IS the interactive slider (Rajat:
+              "one bar, not two"). A transparent range input sits exactly on
+              top of the visual bar (same x/width, generous height for a
+              real touch/click target); .soc-overlay-slider (globals.css)
+              hides the native track so only the thumb renders, so it still
+              reads as ONE bar. Battery is the only caller that passes
+              socEditable. */}
+          {socEditable && onSocChange && (
+            <foreignObject x={x + 6} y={y + 51} width={NODE_W - 12} height={16}>
+              <div
+                data-soc-slider="true"
+                className="w-full h-full flex items-center"
+                onMouseEnter={(e) => e.stopPropagation()}
+                onMouseLeave={(e) => e.stopPropagation()}
+              >
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={1}
+                  value={Math.round((socPercent ?? 0) * 100)}
+                  onChange={(e) => onSocChange(Number(e.target.value) / 100)}
+                  disabled={socDisabled}
+                  aria-label="Battery state of charge"
+                  className="soc-overlay-slider"
+                  style={{
+                    width: "100%",
+                    height: 16,
+                    margin: 0,
+                    cursor: socDisabled ? "default" : "pointer",
+                    opacity: socDisabled ? 0.5 : 1,
+                    ["--soc-thumb-color" as string]: socThumbColor ?? "#22c55e",
+                  } as React.CSSProperties}
+                />
+              </div>
+            </foreignObject>
+          )}
         </>
       )}
 
-      {/* ── Embedded controls via foreignObject ── */}
+      {/* ── Embedded controls via foreignObject ──
+          data-node-foreignobject: GATE-1 overlap-check script reads this
+          div's scrollHeight vs clientHeight to catch content that overflows
+          its allotted card space (the exact class of bug that produced the
+          "text overflows below the card" feedback). */}
       {controls && controlsHeight > 0 && (
         <foreignObject
           x={x + 6}
@@ -192,8 +316,9 @@ export function ComponentNode({
           height={controlsHeight - 6}
         >
           <div
+            data-node-foreignobject="true"
             className="w-full h-full"
-            style={{ fontFamily: "Inter, sans-serif" }}
+            style={{ fontFamily: "Inter, sans-serif", overflow: "hidden" }}
             onMouseEnter={(e) => e.stopPropagation()}
             onMouseLeave={(e) => e.stopPropagation()}
           >

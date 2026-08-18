@@ -20,27 +20,30 @@ interface SimInput {
 }
 
 // Battery constants
-const DOD_FACTOR: Record<BatteryType, number> = {
+// Exported so lib/realSetup.ts (Real Setup — House No. 89 mode) can reuse the
+// exact same DoD/cutoff/C-rate model instead of duplicating magic numbers —
+// the as-built lead-acid preset (50% DoD, 7.2 kWh) already matches these.
+export const DOD_FACTOR: Record<BatteryType, number> = {
   lifepo4: 0.90,
   "lead-acid": 0.50,
 };
-const INVERTER_EFF = 0.95;
-const LOW_SOC_CUTOFF: Record<BatteryType, number> = {
+export const INVERTER_EFF = 0.95;
+export const LOW_SOC_CUTOFF: Record<BatteryType, number> = {
   lifepo4: 0.10,
   "lead-acid": 0.50,
 };
 // C-rate for max charge
-const C_RATE: Record<BatteryType, number> = {
+export const C_RATE: Record<BatteryType, number> = {
   lifepo4: 0.5,
   "lead-acid": 0.2,
 };
-const VOLTAGE: Record<BatteryType, number> = {
+export const VOLTAGE: Record<BatteryType, number> = {
   lifepo4: 51.2,
   "lead-acid": 48,
 };
 
-function getBatteryUsableKwh(batteryKwh: number, batteryType: BatteryType): number {
-  return batteryKwh * DOD_FACTOR[batteryType] * INVERTER_EFF;
+export function getBatteryUsableKwh(batteryKwh: number, batteryType: BatteryType, efficiency: number = INVERTER_EFF): number {
+  return batteryKwh * DOD_FACTOR[batteryType] * efficiency;
 }
 
 function getMaxChargeW(batteryKwh: number, batteryType: BatteryType): number {
@@ -342,9 +345,10 @@ export function calcBackupHours(
   batterySoc: number,
   batteryKwh: number,
   batteryType: BatteryType,
-  loadW: number
+  loadW: number,
+  efficiency: number = INVERTER_EFF
 ): number {
-  const usable = getBatteryUsableKwh(batteryKwh, batteryType);
+  const usable = getBatteryUsableKwh(batteryKwh, batteryType, efficiency);
   const available = usable * batterySoc;
   if (loadW <= 0) return 99;
   return available / (loadW / 1000);

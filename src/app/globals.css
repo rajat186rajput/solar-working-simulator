@@ -127,3 +127,80 @@
     animation: none;
   }
 }
+
+/* GATE-1 UI polish — "extra bar" fix: the battery node used to stack a
+   read-only gradient bar AND a separate native <input type="range"> track
+   underneath it (two visible bars). This class turns the range input's own
+   track fully transparent so it can be absolutely-positioned ON TOP of the
+   gradient bar — same footprint, only the thumb is visible — collapsing
+   the two bars into one interactive control. */
+.soc-overlay-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.soc-overlay-slider::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 6px;
+}
+.soc-overlay-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--soc-thumb-color, #22c55e);
+  margin-top: -3px;
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(0,0,0,0.6);
+}
+.soc-overlay-slider::-moz-range-track {
+  background: transparent;
+  height: 6px;
+  border: none;
+}
+.soc-overlay-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--soc-thumb-color, #22c55e);
+  cursor: pointer;
+  box-shadow: 0 0 4px rgba(0,0,0,0.6);
+}
+.soc-overlay-slider:disabled::-webkit-slider-thumb {
+  cursor: default;
+  opacity: 0.5;
+}
+.soc-overlay-slider:disabled::-moz-range-thumb {
+  cursor: default;
+  opacity: 0.5;
+}
+/* Keyboard focus + hover — thumb grows slightly so the single merged bar
+   still gives clear affordance that it's interactive (GATE-2 round-3). */
+.soc-overlay-slider:hover:not(:disabled)::-webkit-slider-thumb,
+.soc-overlay-slider:focus-visible::-webkit-slider-thumb {
+  width: 15px;
+  height: 15px;
+  margin-top: -4.5px;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.25), 0 0 4px rgba(0,0,0,0.6);
+}
+.soc-overlay-slider:hover:not(:disabled)::-moz-range-thumb,
+.soc-overlay-slider:focus-visible::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  box-shadow: 0 0 0 3px rgba(255,255,255,0.25), 0 0 4px rgba(0,0,0,0.6);
+}
+
+/* GATE-2 round-3 (Rajat: mobile node text unreadable at 375px) — mobile
+   schematic now renders inside a horizontally-scrollable, wider-than-viewport
+   canvas so text keeps its authored px size instead of being crushed by the
+   viewBox-to-viewport scale ratio. */
+.schematic-mobile-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.schematic-mobile-scroll::-webkit-scrollbar {
+  display: none;
+}
